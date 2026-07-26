@@ -12,7 +12,7 @@ Automatic **two-way sync** between your Obsidian vault (whole vault or a single 
 - ✅ Optional **"Do not delete in Google Drive"** mode: local deletions are never propagated to Drive
 - ✅ **Sync tree** in the settings: browse all synced folders and files; a checkbox per entry shows whether it exists locally, and files kept only in Drive can be restored locally per entry (auto-refreshes after each sync, plus a manual refresh button)
 - ✅ All file types (Markdown, images, PDFs …), optionally narrowed by a **file-extension filter**
-- ✅ Google Docs/Sheets/Slides are skipped automatically (not downloadable as binary files)
+- ✅ Optional **Google Docs & Sheets embeds:** view (and edit on desktop) live Google Docs/Sheets right inside a note — view-only, never downloaded or uploaded
 - ✅ **Shared Drives** (Team Drives) are supported — auto-detected when you pick the folder
 - ✅ **Live status bar** + persistent **sync log** (viewable in the log window)
 - 📱 Works on **desktop and mobile**. You sign in on desktop, then copy the sign-in token to mobile (mobile can't run the sign-in redirect flow — see [Mobile setup](#mobile-setup-sign-in-on-desktop-copy-the-token))
@@ -160,6 +160,17 @@ Below the settings you'll find a **sync tree** showing all synced folders and fi
 
 The tree **auto-refreshes after each sync**, and there's a **refresh button** next to the heading for a manual update. The heading also shows how many entries are currently only in Drive.
 
+### Google Docs & Sheets (view-only, optional)
+
+Native Google Docs and Sheets can't be synced as files — they have no downloadable binary, only the live cloud document. With the per-target **"Sync Google Docs & Sheets"** toggle enabled, the plugin instead creates a small **stub note** in your vault for each one — `<name>.gdoc.md` for Docs, `<name>.gsheet.md` for Sheets — that **embeds the live Google editor**:
+
+- **Desktop:** the note shows the real, fully **editable** Google editor inline (it's the actual Google Docs/Sheets page — your edits save straight to Google, no conversion).
+- **Mobile:** shows an **"Open in Google Docs / Sheets"** button instead (mobile can't embed the editor).
+
+These stub notes are pointers, not content: **the document is never downloaded and never uploaded back**, and the stubs are **excluded from the sync** entirely (they're never uploaded to Drive and never treated as deletions). Deleting a stub note doesn't touch the Google document; deleting the Google document doesn't auto-remove the stub. Default: **off**.
+
+> Tip: the embed fills the full note pane width. Sign-in uses your browser's Google session inside the embed.
+
 ### 4. Get started
 
 - **Manual:** ribbon icon (🔄), the command "Google Drive Mirror: Sync now", or click the status bar at the bottom.
@@ -183,19 +194,19 @@ Before any change to the sync logic: keep `npm test` green. The core logic (reco
 
 Architecture:
 
-| File | Responsibility |
-|------|----------------|
-| [`src/main.ts`](src/main.ts) | Plugin entry point, commands, vault events, auto-sync timer, status bar |
-| [`src/oauth.ts`](src/oauth.ts) | OAuth loopback flow, token refresh against Google |
-| [`src/drive-client.ts`](src/drive-client.ts) | Google Drive REST API wrapper (list/upload/download/trash, folders, Shared Drives) |
-| [`src/sync-engine.ts`](src/sync-engine.ts) | Orchestration, local hashing, execution of file and folder actions |
-| [`src/reconciler.ts`](src/reconciler.ts) | `reconcile()` (files) + `reconcileFolders()` (folders): diff, conflict and deletion decisions |
-| [`src/sync-state.ts`](src/sync-state.ts) | Persistent sync base (`local`/`remote` flags) in its own file |
-| [`src/sync-status.ts`](src/sync-status.ts) | Live status + persistent log with retention |
-| [`src/storage.ts`](src/storage.ts) | Read/write JSON files in the plugin folder |
-| [`src/settings-tab.ts`](src/settings-tab.ts) | Settings UI, log window |
-| [`src/suggesters.ts`](src/suggesters.ts) | Autocomplete dropdowns for local and Drive folders |
-| [`src/logger.ts`](src/logger.ts) | Central logger (debug logging optional) |
+| File                                         | Responsibility                                                                                |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| [`src/main.ts`](src/main.ts)                 | Plugin entry point, commands, vault events, auto-sync timer, status bar                       |
+| [`src/oauth.ts`](src/oauth.ts)               | OAuth loopback flow, token refresh against Google                                             |
+| [`src/drive-client.ts`](src/drive-client.ts) | Google Drive REST API wrapper (list/upload/download/trash, folders, Shared Drives)            |
+| [`src/sync-engine.ts`](src/sync-engine.ts)   | Orchestration, local hashing, execution of file and folder actions                            |
+| [`src/reconciler.ts`](src/reconciler.ts)     | `reconcile()` (files) + `reconcileFolders()` (folders): diff, conflict and deletion decisions |
+| [`src/sync-state.ts`](src/sync-state.ts)     | Persistent sync base (`local`/`remote` flags) in its own file                                 |
+| [`src/sync-status.ts`](src/sync-status.ts)   | Live status + persistent log with retention                                                   |
+| [`src/storage.ts`](src/storage.ts)           | Read/write JSON files in the plugin folder                                                    |
+| [`src/settings-tab.ts`](src/settings-tab.ts) | Settings UI, log window                                                                       |
+| [`src/suggesters.ts`](src/suggesters.ts)     | Autocomplete dropdowns for local and Drive folders                                            |
+| [`src/logger.ts`](src/logger.ts)             | Central logger (debug logging optional)                                                       |
 
 ---
 
