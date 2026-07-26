@@ -10,6 +10,20 @@ export interface DriveFolderHit {
 }
 
 /**
+ * Heuristic: does the input look like a raw Drive folder ID rather than a folder
+ * name the user is searching for? Drive IDs are a single token of URL-safe
+ * base64 characters (`A-Za-z0-9_-`), no spaces, and long (~28+ chars). Searching
+ * folder NAMES for such a token matches nothing, so the name-search suggester
+ * would only flicker an empty dropdown open/closed on every keystroke (the
+ * settings page "jumps"). When the input is ID-shaped we suppress the dropdown
+ * and let the user paste the ID / use the "Check" button instead.
+ */
+export function looksLikeDriveId(query: string): boolean {
+  const q = query.trim();
+  return q.length >= 20 && /^[A-Za-z0-9_-]+$/.test(q);
+}
+
+/**
  * Autocomplete for local vault folders. Shows matching folders as a dropdown
  * while typing (as in many other Obsidian plugins).
  */
@@ -67,6 +81,10 @@ export class DriveFolderSuggest extends AbstractInputSuggest<DriveFolderHit> {
 
   async getSuggestions(query: string): Promise<DriveFolderHit[]> {
     if (!this.isReady()) return [];
+    // A pasted/typed folder ID is not a name to search for — suppress the
+    // dropdown so it doesn't flicker open/closed (empty results) on every
+    // keystroke and make the settings page jump.
+    if (looksLikeDriveId(query)) return [];
     // Small debounce so that not every keystroke triggers an API call.
     await this.debounce(250);
     try {
