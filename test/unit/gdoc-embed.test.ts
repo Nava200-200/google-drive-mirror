@@ -17,9 +17,11 @@ describe("kindForMime", () => {
   it("maps the Google Apps MIME types to kinds", () => {
     expect(kindForMime(GOOGLE_DOC_MIME)).toBe("doc");
     expect(kindForMime(GOOGLE_SHEET_MIME)).toBe("sheet");
+    expect(kindForMime("application/vnd.google-apps.presentation")).toBe("slide");
+    expect(kindForMime("application/vnd.google-apps.drawing")).toBe("drawing");
   });
-  it("returns null for unsupported kinds (e.g. Slides, folders)", () => {
-    expect(kindForMime("application/vnd.google-apps.presentation")).toBeNull();
+  it("returns null for unsupported kinds (e.g. Forms, folders)", () => {
+    expect(kindForMime("application/vnd.google-apps.form")).toBeNull();
     expect(kindForMime("application/vnd.google-apps.folder")).toBeNull();
     expect(kindForMime("text/markdown")).toBeNull();
   });
@@ -66,11 +68,17 @@ describe("editUrl", () => {
     expect(editUrl("abc123", "sheet")).toBe(
       "https://docs.google.com/spreadsheets/d/abc123/edit"
     );
+    expect(editUrl("abc123", "slide")).toBe(
+      "https://docs.google.com/presentation/d/abc123/edit"
+    );
+    expect(editUrl("abc123", "drawing")).toBe(
+      "https://docs.google.com/drawings/d/abc123/edit"
+    );
   });
 });
 
 describe("buildStub / parseStub round-trip", () => {
-  for (const kind of ["doc", "sheet"] as const) {
+  for (const kind of ["doc", "sheet", "slide", "drawing"] as const) {
     it(`parses back the id, title and kind it wrote (${kind})`, () => {
       const text = buildStub({ driveId: "abc123", title: "My File", kind });
       expect(parseStub(text)).toEqual({ driveId: "abc123", title: "My File", kind });

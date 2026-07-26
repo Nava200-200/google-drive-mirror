@@ -926,7 +926,7 @@ describe("SyncEngine.sync — Google Docs & Sheets (view-only stubs)", () => {
     expect(text).toContain("spreadsheets/d/sheet1/edit");
   });
 
-  it("does NOT create a stub for an unsupported Apps kind (e.g. Slides)", async () => {
+  it("writes a .gslides.md stub for a Google Slides deck", async () => {
     const { engine, vault, drive } = setup({ syncGoogleDocs: true });
     drive.seed({
       path: "Deck",
@@ -938,8 +938,46 @@ describe("SyncEngine.sync — Google Docs & Sheets (view-only stubs)", () => {
 
     await engine.sync(false);
 
-    expect(await vault.adapter.exists("Deck.gdoc.md")).toBe(false);
-    expect(await vault.adapter.exists("Deck.gsheet.md")).toBe(false);
+    expect(await vault.adapter.exists("Deck.gslides.md")).toBe(true);
+    const text = await vault.adapter.read("Deck.gslides.md");
+    expect(text).toContain("gdocKind: slide");
+    expect(text).toContain("presentation/d/slide1/edit");
+  });
+
+  it("writes a .gdraw.md stub for a Google Drawing", async () => {
+    const { engine, vault, drive } = setup({ syncGoogleDocs: true });
+    drive.seed({
+      path: "Diagram",
+      content: "",
+      md5: "",
+      id: "draw1",
+      mimeType: "application/vnd.google-apps.drawing",
+    });
+
+    await engine.sync(false);
+
+    expect(await vault.adapter.exists("Diagram.gdraw.md")).toBe(true);
+    const text = await vault.adapter.read("Diagram.gdraw.md");
+    expect(text).toContain("gdocKind: drawing");
+    expect(text).toContain("drawings/d/draw1/edit");
+  });
+
+  it("does NOT create a stub for an unsupported Apps kind (e.g. Forms)", async () => {
+    const { engine, vault, drive } = setup({ syncGoogleDocs: true });
+    drive.seed({
+      path: "Survey",
+      content: "",
+      md5: "",
+      id: "form1",
+      mimeType: "application/vnd.google-apps.form",
+    });
+
+    await engine.sync(false);
+
+    expect(await vault.adapter.exists("Survey.gdoc.md")).toBe(false);
+    expect(await vault.adapter.exists("Survey.gsheet.md")).toBe(false);
+    expect(await vault.adapter.exists("Survey.gslides.md")).toBe(false);
+    expect(await vault.adapter.exists("Survey.gdraw.md")).toBe(false);
   });
 
   it("does NOT create a stub when syncGoogleDocs is off", async () => {

@@ -32,7 +32,7 @@ import { t, MessageKey } from "./i18n";
 export const GDOC_BLOCK_LANG = "gdoc";
 
 /** A supported native Google Workspace file kind. */
-export type GoogleFileKind = "doc" | "sheet";
+export type GoogleFileKind = "doc" | "sheet" | "slide" | "drawing";
 
 /** Per-kind metadata: MIME type, editor URL, stub suffix, i18n labels. */
 interface KindMeta {
@@ -66,6 +66,20 @@ export const KIND_META: Record<GoogleFileKind, KindMeta> = {
     editUrl: (id) => `https://docs.google.com/spreadsheets/d/${id}/edit`,
     openLabelKey: "gsheetOpenInDrive",
     fallbackPrefix: "google-sheet",
+  },
+  slide: {
+    mime: "application/vnd.google-apps.presentation",
+    suffix: ".gslides.md",
+    editUrl: (id) => `https://docs.google.com/presentation/d/${id}/edit`,
+    openLabelKey: "gslidesOpenInDrive",
+    fallbackPrefix: "google-slides",
+  },
+  drawing: {
+    mime: "application/vnd.google-apps.drawing",
+    suffix: ".gdraw.md",
+    editUrl: (id) => `https://docs.google.com/drawings/d/${id}/edit`,
+    openLabelKey: "gdrawOpenInDrive",
+    fallbackPrefix: "google-drawing",
   },
 };
 
@@ -209,7 +223,8 @@ export function parseGdocBlock(source: string): StubData | null {
 /** Maps a raw kind string to a supported kind (defaults to `doc`). */
 function normalizeKind(raw: string | undefined): GoogleFileKind {
   const v = raw?.trim();
-  return v === "sheet" ? "sheet" : "doc";
+  if (v === "sheet" || v === "slide" || v === "drawing") return v;
+  return "doc";
 }
 
 /**

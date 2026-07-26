@@ -81,7 +81,7 @@ Data flow: `main.ts` wires everything up → `SyncEngine` orchestrates a run →
 | `suggesters.ts` | `AbstractInputSuggest` autocomplete for local and Drive folders. |
 | `logger.ts` | Central `log` wrapper with prefix `[GDrive Sync]`. `info`/`debug` only when `settings.debugLogging` is active; `warn`/`error` always. Toggle via `setDebugLogging()`. |
 | `types.ts` | `SyncTarget`, `newTarget()`, `PluginSettings` (holds `targets: SyncTarget[]` + global OAuth/auto-sync/log fields), `DEFAULT_SETTINGS`, `SyncStateEntry`, `DriveFile`, `DriveFolder`, `SyncAction`, `FolderAction`, `OAUTH_SCOPE`. |
-| `gdoc-embed.ts` | Google Docs/Sheets **view-only** layer (separate from sync). Kind-aware via `KIND_META` (doc → `.gdoc.md`; sheet → `.gsheet.md`). Pure helpers (`buildStub`/`parseStub`/`stubPath`/`isGoogleFileStub`/`kindForMime`/`editUrl`) + `renderGdocBlock()` for the `gdoc` fenced code block (block carries `kind:`). Unit-tested in `test/unit/gdoc-embed.test.ts`. See **Google Docs/Sheets embed** below. |
+| `gdoc-embed.ts` | Google Workspace **view-only** layer (separate from sync). Kind-aware via `KIND_META` (doc → `.gdoc.md`; sheet → `.gsheet.md`; slide → `.gslides.md`; drawing → `.gdraw.md`). Pure helpers (`buildStub`/`parseStub`/`stubPath`/`isGoogleFileStub`/`kindForMime`/`editUrl`) + `renderGdocBlock()` for the `gdoc` fenced code block (block carries `kind:`). Unit-tested in `test/unit/gdoc-embed.test.ts`. See **Google Workspace embed** below. |
 | `i18n/` | `index.ts`: `t(key, params?)` translation function + `detectLocale()`/`initLocale()`. `locales/{en,de,it,fr}.ts`: message dicts. See **i18n** below. |
 
 **Tests (`test/`):** vitest, Node environment. `test/unit/` (reconciler, reconcile-folders,
@@ -223,22 +223,25 @@ sync-state, sync-status, drive-client, oauth, i18n), `test/integration/` (sync-e
   `FakeVault.fileManager`) — there is deliberately no `vault.trash` fallback (the Obsidian
   reviewer flags any `Vault.trash()` use). Applies to files AND folders. Covered by an
   integration test asserting the local deletion routes through `FileManager.trashFile`.
-- **Google Docs/Sheets embed (`SyncTarget.syncGoogleDocs`, default off; `gdoc-embed.ts`):**
-  A **view-only** layer, deliberately OUTSIDE the sync/reconciler. Native Google Docs
-  (`…google-apps.document`) and Sheets (`…google-apps.spreadsheet`) still can't be part of
-  the sync (no downloadable binary → `isGoogleAppsFile` skips them). When the toggle is on,
-  the engine COLLECTS both kinds during the Drive listing (in the same `onFile` where Apps
-  files are dropped; `kindForMime()` decides what's supported) and, after all transfers,
-  writes a small stub note per file (`writeGdocStubs()`): `<name>.gdoc.md` for Docs,
-  `<name>.gsheet.md` for Sheets. The stub holds only a POINTER (frontmatter
-  `gdocId`/`gdocKind` + a link + a ```gdoc fenced block that carries `kind:`), never the
-  file content. A single `registerMarkdownCodeBlockProcessor("gdoc", …)` in `main.ts`
-  renders that block via `renderGdocBlock()`, picking the editor URL by kind (Docs →
-  `document/d/…`, Sheets → `spreadsheets/d/…`): on **desktop** an editable Electron
-  `<webview>` of the live Google editor (editing happens in Google's own editor — no
-  conversion, no round-trip); on **mobile** an "Open in Google …" button (Obsidian mobile
-  has no `<webview>` and Google refuses plain iframing). Kinds are table-driven via
-  `KIND_META`, so adding Slides etc. is one more entry + i18n label. **Deletion safety:**
+- **Google Workspace embed (`SyncTarget.syncGoogleDocs`, default off; `gdoc-embed.ts`):**
+  A **view-only** layer, deliberately OUTSIDE the sync/reconciler. Native Google Workspace
+  files — Docs (`…document`), Sheets (`…spreadsheet`), Slides (`…presentation`), Drawings
+  (`…drawing`) — still can't be part of the sync (no downloadable binary → `isGoogleAppsFile`
+  skips them). When the toggle is on, the engine COLLECTS the supported kinds during the
+  Drive listing (in the same `onFile` where Apps files are dropped; `kindForMime()` decides
+  what's supported — unsupported Apps types like Forms are ignored) and, after all transfers,
+  writes a small stub note per file (`writeGdocStubs()`): `<name>.gdoc.md` (Docs),
+  `<name>.gsheet.md` (Sheets), `<name>.gslides.md` (Slides), `<name>.gdraw.md` (Drawings).
+  The stub holds only a POINTER (frontmatter `gdocId`/`gdocKind` + a link + a ```gdoc fenced
+  block that carries `kind:`), never the file content. A single
+  `registerMarkdownCodeBlockProcessor("gdoc", …)` in `main.ts` renders that block via
+  `renderGdocBlock()`, picking the editor URL by kind (Docs → `document/d/…`, Sheets →
+  `spreadsheets/d/…`, Slides → `presentation/d/…`, Drawings → `drawings/d/…`): on **desktop**
+  an editable Electron `<webview>` of the live Google editor (editing happens in Google's own
+  editor — no conversion, no round-trip); on **mobile** an "Open in Google …" button
+  (Obsidian mobile has no `<webview>` and Google refuses plain iframing). Kinds are
+  table-driven via `KIND_META`, so adding another type (e.g. Forms) is one more entry + i18n
+  label. **Deletion safety:**
   stub files are auto-EXCLUDED from the reconciler on BOTH sides — `collectLocal()` skips
   `isGoogleFileStub(path)` (so a stub is never uploaded and never seen as "deleted on one
   side"), and `writeGdocStubs()` never clobbers a non-stub file at the stub path and never
