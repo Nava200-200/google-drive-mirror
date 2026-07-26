@@ -2,9 +2,9 @@
 	"id": "google-drive-mirror",
 	"name": "Google Drive Mirror",
 	"minAppVersion": "1.6.6",
-	"description": "Sync multiple vault folders to multiple Google Drive folders, including Shared Drives. Each pairing syncs a subfolder or the whole vault two-way, mirrors the folder structure, and picks up files created directly in Drive. Optionally embed Google Docs and Sheets as live, editable views.",
+	"description": "Sync multiple vault folders to multiple Google Drive folders, including Shared Drives. Each pairing syncs a subfolder or the whole vault two-way, mirrors the folder structure, and picks up files created directly in Drive. Optionally sync this plugin's own settings (and other plugins' settings) across devices, passphrase-encrypted, and embed Google Workspace files (Docs, Sheets, Slides, Drawings) as live, editable views.",
 	"author": "Pascal Lauener",
 	"isDesktopOnly": false,
 	"fundingUrl": "https://buymeacoffee.com/llaaccssaapp",
-	"version": "0.10.0"
+	"version": "0.11.0"
 }

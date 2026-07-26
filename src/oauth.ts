@@ -33,6 +33,17 @@ export class OAuthManager {
     this.settings = settings;
   }
 
+  /**
+   * Re-points this manager at a new settings object and drops the cached access
+   * token. Used after config sync replaces `data.json` (and thus the settings
+   * object + possibly the credentials) on this device.
+   */
+  setSettings(settings: PluginSettings): void {
+    this.settings = settings;
+    this.cachedAccessToken = null;
+    this.cachedTokenExpiryMs = 0;
+  }
+
   /** Is enough configured to fetch tokens? */
   isConfigured(): boolean {
     return Boolean(this.settings.clientId && this.settings.refreshToken);

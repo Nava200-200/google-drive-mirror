@@ -7,6 +7,17 @@ import { SyncEngine } from "./sync-engine";
 import { SyncStateStore, isStateFile, stateFileName } from "./sync-state";
 import { SyncStatus } from "./sync-status";
 import {
+  ConfigSyncStateStore,
+  isConfigStateFile,
+} from "./config-sync-state";
+import {
+  ConfigSyncEngine,
+  ConflictChoice,
+  DecryptError,
+} from "./config-sync";
+import { ConfigConflictModal } from "./config-conflict-modal";
+import { obfuscatePassphrase, deobfuscatePassphrase } from "./crypto-box";
+import {
   DEFAULT_SETTINGS,
   PluginSettings,
   SyncStateEntry,
@@ -31,6 +42,9 @@ interface TargetRuntime {
   state: SyncStateStore;
 }
 
+/** Config sync's own log file (separate from the note-sync `sync-log.json`). */
+const CONFIG_LOG_FILE = "config-sync-log.json";
+
 /**
  * Plugin entry point. Wires up OAuth, Drive client and one sync engine PER
  * configured target, plus the auto-sync triggers (local vault events + Drive
@@ -48,6 +62,19 @@ export default class GoogleDriveSyncPlugin extends Plugin {
   private runtimes = new Map<string, TargetRuntime>();
   /** True while a (multi-target) sync run is in progress. */
   private running = false;
+
+  /** Config-sync engine + state (this plugin's own settings across devices). */
+  private configEngine!: ConfigSyncEngine;
+  private configState!: ConfigSyncStateStore;
+  /** Live status + log for config sync (own file, shown in settings). */
+  configStatus!: SyncStatus;
+  /** True while a config-sync run is in progress (independent of `running`). */
+  private configRunning = false;
+  /**
+   * In-memory config-sync passphrase for this session. NEVER persisted to disk
+   * and NEVER uploaded — the user re-enters it per device (per app session).
+   */
+  private configPassphrase = "";
 
   private pollHandle: number | null = null;
   private debounceHandle: number | null = null;
@@ -75,6 +102,34 @@ export default class GoogleDriveSyncPlugin extends Plugin {
 
     // Build one engine + state store per configured target.
     await this.rebuildRuntimes();
+
+    // Config sync (this plugin's own settings across devices). One state store,
+    // scoped to vault + config Drive folder; shares the OAuth account + client.
+    // Its OWN status/log (separate file) so its progress + log show in settings
+    // exactly like note sync, without mixing into the note-sync log.
+    this.configStatus = new SyncStatus(
+      this.storage,
+      () => this.settings.logRetentionHours,
+      CONFIG_LOG_FILE
+    );
+    await this.configStatus.load();
+    this.configState = new ConfigSyncStateStore(this.storage, () =>
+      this.configScopeId()
+    );
+    await this.configState.load();
+    this.configEngine = new ConfigSyncEngine(
+      this.app.vault,
+      this.drive,
+      this.oauth,
+      this.configState,
+      this.configStatus,
+      this.manifest.id,
+      () => this.settings,
+      () => this.onConfigDownloaded()
+    );
+    // Restore the obfuscated passphrase into memory so unattended sync works.
+    await this.restoreConfigPassphrase();
+
     // Remove state files of targets that no longer exist (data hygiene).
     await this.cleanupOrphanStateFiles();
     // Remove orphan remote-store IndexedDB databases (from crashed runs / removed
@@ -105,6 +160,11 @@ export default class GoogleDriveSyncPlugin extends Plugin {
       id: "login",
       name: t("commandLogin"),
       callback: () => void this.login(),
+    });
+    this.addCommand({
+      id: "sync-config-now",
+      name: t("configSyncCommandName"),
+      callback: () => void this.runConfigSync(true),
     });
 
     // Renders `gdoc` fenced code blocks (inside .gdoc.md stub notes) as a live,
@@ -242,6 +302,8 @@ export default class GoogleDriveSyncPlugin extends Plugin {
     );
     const files = await this.storage.listFileNames();
     for (const name of files) {
+      // Never sweep the config-sync state file (not a per-target state file).
+      if (isConfigStateFile(name)) continue;
       if (isStateFile(name) && !valid.has(name)) {
         await this.storage.remove(name);
         log.info("Verwaiste Sync-State-Datei entfernt:", name);
@@ -349,6 +411,177 @@ export default class GoogleDriveSyncPlugin extends Plugin {
       // button re-enables and the status bar settles on the final state.
       this.status.notify();
     }
+  }
+
+  // ---------- Config sync (this plugin's own settings) ----------
+
+  /** Scope identity for the config-sync base (vault + config Drive folder). */
+  private configScopeId(): string {
+    const vault = this.app.vault.getName();
+    const drive = this.settings.configDriveFolderId || "-";
+    return `${vault}::config::${drive}`;
+  }
+
+  /**
+   * Device-stable key for obfuscating the stored passphrase. Bound to the vault
+   * + plugin id + a fixed app salt, so a data.json copied to another device
+   * won't de-obfuscate (reads as "no passphrase set" there).
+   */
+  private deviceKey(): string {
+    return `${this.app.vault.getName()}::${this.manifest.id}::gds-cfg-obf-v1`;
+  }
+
+  /** Session passphrase accessors (used by the settings UI). */
+  hasConfigPassphrase(): boolean {
+    return this.configPassphrase.length > 0;
+  }
+
+  /**
+   * Sets the in-memory passphrase AND persists it obfuscated (device-local), so
+   * unattended/auto config sync works without re-prompting after a restart.
+   */
+  async setConfigPassphrase(pass: string): Promise<void> {
+    this.configPassphrase = pass;
+    this.settings.configPassphraseObf = pass
+      ? await obfuscatePassphrase(pass, this.deviceKey())
+      : "";
+    await this.saveSettings();
+  }
+
+  /**
+   * Restores the passphrase into memory from its obfuscated device-local form on
+   * load. If it can't be decoded here (copied device), treat as no passphrase.
+   */
+  private async restoreConfigPassphrase(): Promise<void> {
+    const stored = this.settings.configPassphraseObf;
+    if (!stored) return;
+    const pass = await deobfuscatePassphrase(stored, this.deviceKey());
+    this.configPassphrase = pass ?? "";
+  }
+
+  isConfigSyncing(): boolean {
+    return this.configRunning;
+  }
+
+  /** Exposes the config engine so the settings UI can establish a passphrase. */
+  get configSync(): ConfigSyncEngine {
+    return this.configEngine;
+  }
+
+  /**
+   * Manual config sync: uploads/downloads THIS plugin's own settings so devices
+   * share the same targets/options. Separate from `runSync` (own `configRunning`
+   * flag) — the two never block each other. NEVER deletes.
+   */
+  async runConfigSync(showNotice: boolean): Promise<void> {
+    if (this.configRunning) {
+      if (showNotice) new Notice(t("configSyncAlreadyRunning"));
+      return;
+    }
+    if (!this.settings.configSyncEnabled) return;
+    if (!this.oauth.isConfigured()) {
+      if (showNotice) new Notice(t("noticeSignInFirst"));
+      return;
+    }
+    if (!this.settings.configDriveFolderId) {
+      if (showNotice) new Notice(t("configSyncPassphraseNeeded"));
+      return;
+    }
+    if (!this.hasConfigPassphrase()) {
+      if (showNotice) new Notice(t("configSyncPassphraseNeeded"));
+      return;
+    }
+
+    this.configRunning = true;
+    if (showNotice) new Notice(t("configSyncRunning"));
+    // Ticker so the elapsed duration in the settings status line keeps updating.
+    const ticker = window.setInterval(() => this.configStatus.touch(), 1000);
+    try {
+      const outcome = await this.configEngine.sync(
+        this.configPassphrase,
+        (localMtime, remoteMtime) =>
+          this.askConfigConflict(localMtime, remoteMtime)
+      );
+      // A stored-passphrase MISMATCH is surfaced even during an unattended run
+      // (showNotice=false), so a stale stored passphrase doesn't fail silently.
+      if (outcome.kind === "skipped" && outcome.mismatch) {
+        new Notice(t("configSyncDecryptFailed"), 15000);
+        return;
+      }
+      if (!showNotice) return;
+      switch (outcome.kind) {
+        case "uploaded":
+          new Notice(t("configSyncUploaded"));
+          break;
+        case "downloaded":
+          new Notice(t("configSyncDownloaded"));
+          break;
+        case "changed":
+          new Notice(
+            t("configSyncChanged", {
+              up: outcome.uploaded,
+              down: outcome.downloaded,
+            })
+          );
+          break;
+        case "noop":
+          new Notice(t("configSyncNoop"));
+          break;
+        case "conflict":
+          // User cancelled the conflict modal — nothing changed.
+          break;
+        case "skipped":
+          new Notice(t("configSyncSkipped", { reason: outcome.reason }));
+          break;
+      }
+    } catch (e) {
+      // A wrong/incompatible passphrase against already-encrypted Drive data
+      // gets a specific, actionable message; anything else is generic.
+      if (e instanceof DecryptError) {
+        log.error("config sync: decrypt failed (passphrase mismatch)", e);
+        if (showNotice) new Notice(t("configSyncDecryptFailed"), 15000);
+      } else {
+        log.error("config sync failed", e);
+        if (showNotice) {
+          new Notice(t("configSyncFailed", { error: errString(e) }), 15000);
+        }
+      }
+    } finally {
+      this.configRunning = false;
+      window.clearInterval(ticker);
+      // Re-notify once the flag has cleared so the settings button re-enables.
+      this.configStatus.notify();
+    }
+  }
+
+  /** Opens the conflict modal and resolves with the user's choice. */
+  private askConfigConflict(
+    localMtime: number,
+    remoteMtime: number
+  ): Promise<ConflictChoice | undefined> {
+    return new Promise((resolve) => {
+      new ConfigConflictModal(
+        this.app,
+        localMtime,
+        remoteMtime,
+        resolve
+      ).open();
+    });
+  }
+
+  /**
+   * Called by the config engine right after it writes a downloaded data.json.
+   * Re-loads settings and rebuilds runtimes so the new targets/options take
+   * effect live, and re-points OAuth at the fresh settings object (credentials
+   * may have changed). Ordering matters (self-write hazard): loadSettings() runs
+   * BEFORE any subsequent saveSettings() can clobber the just-written file.
+   */
+  private async onConfigDownloaded(): Promise<void> {
+    await this.loadSettings();
+    this.oauth.setSettings(this.settings);
+    setDebugLogging(this.settings.debugLogging);
+    await this.rebuildRuntimes();
+    this.reconfigureAutoSync();
   }
 
   /**

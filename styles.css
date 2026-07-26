@@ -13,6 +13,37 @@
   font-weight: var(--font-medium);
 }
 
+/* Settings tab bar. Horizontal, scrollable/wrapping on narrow screens. */
+.gds-tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.5rem 0 1rem;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.gds-tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0.4rem 0.75rem;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+.gds-tab:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+.gds-tab.is-active {
+  color: var(--text-accent);
+  border-bottom-color: var(--text-accent);
+  font-weight: var(--font-medium);
+}
+
 /* Statusleisten-Eintrag klickbar. */
 .gds-statusbar {
   cursor: pointer;

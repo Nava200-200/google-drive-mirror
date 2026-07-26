@@ -122,7 +122,34 @@ class FakeAdapter {
   }
 
   async exists(path: string): Promise<boolean> {
-    return this.files.has(path);
+    if (this.files.has(path)) return true;
+    // A directory "exists" if any file lives under it (folders are implicit).
+    const prefix = `${path}/`;
+    for (const p of this.files.keys()) if (p.startsWith(prefix)) return true;
+    return false;
+  }
+
+  /**
+   * Lists immediate children of a directory (folders + files), like Obsidian's
+   * DataAdapter.list. Folders are implicit from file paths.
+   */
+  async list(
+    dir: string
+  ): Promise<{ files: string[]; folders: string[] }> {
+    const prefix = dir.endsWith("/") ? dir : `${dir}/`;
+    const files = new Set<string>();
+    const folders = new Set<string>();
+    for (const p of this.files.keys()) {
+      if (!p.startsWith(prefix)) continue;
+      const rest = p.slice(prefix.length);
+      const slash = rest.indexOf("/");
+      if (slash === -1) {
+        files.add(p);
+      } else {
+        folders.add(prefix + rest.slice(0, slash));
+      }
+    }
+    return { files: [...files], folders: [...folders] };
   }
 
   async stat(path: string): Promise<{ mtime: number; size: number } | null> {

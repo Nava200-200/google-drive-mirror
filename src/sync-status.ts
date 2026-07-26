@@ -10,6 +10,7 @@ import { t } from "./i18n";
  * the configured retention period.
  */
 
+/** Default log file name (note sync). Config sync injects its own. */
 const LOG_FILE = "sync-log.json";
 
 export type SyncPhase = "idle" | "running" | "done" | "error";
@@ -53,17 +54,20 @@ export class SyncStatus {
    * @param retentionHours  Returns the current retention period in hours
    *                        (0 = never delete). A function, so that settings changes
    *                        take effect immediately.
+   * @param logFile         Log file name. Defaults to the note-sync log; config
+   *                        sync injects its own so the two logs stay separate.
    */
   constructor(
     private storage?: PluginStorage,
-    private retentionHours: () => number = () => 24
+    private retentionHours: () => number = () => 24,
+    private logFile: string = LOG_FILE
   ) {}
 
   /** Loads the log from the file and applies retention. */
   async load(): Promise<void> {
     if (!this.storage) return;
     const data = await this.storage.readJson<{ entries?: LogEntry[] }>(
-      LOG_FILE,
+      this.logFile,
       {}
     );
     this.log = data.entries ?? [];
@@ -84,7 +88,7 @@ export class SyncStatus {
   async save(): Promise<void> {
     if (!this.storage) return;
     this.pruneOld();
-    await this.storage.writeJson(LOG_FILE, { version: 1, entries: this.log });
+    await this.storage.writeJson(this.logFile, { version: 1, entries: this.log });
   }
 
   /** Removes entries older than the retention period. */

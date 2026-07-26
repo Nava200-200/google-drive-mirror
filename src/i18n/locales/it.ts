@@ -117,13 +117,15 @@ export const it: Partial<Messages> = {
   neverDeleteRemoteName: "Non eliminare in Google Drive",
   neverDeleteRemoteDesc:
     "Se attivo, un file eliminato localmente NON viene rimosso da Google Drive. Il file resta in Drive e non torna localmente. Tramite “Solo in Drive” qui sotto puoi scaricare di nuovo singoli file localmente. Predefinito: disattivo.",
-  syncGoogleDocsName: "Sincronizza Google Docs e Fogli (sola visualizzazione)",
+  syncGoogleDocsName: "Sincronizza i file Google Workspace (sola visualizzazione)",
   syncGoogleDocsDesc:
-    "Crea una piccola nota per ogni Google Doc e Foglio che incorpora l’editor Google dal vivo (modificabile su desktop; si apre esternamente su mobile). Il file stesso non viene scaricato né mai ricaricato. Predefinito: disattivo.",
+    "Crea una piccola nota per ogni Google Doc, Foglio, Presentazione e Disegno che incorpora l’editor Google dal vivo (modificabile su desktop; si apre esternamente su mobile). Il file stesso non viene scaricato né mai ricaricato. Predefinito: disattivo.",
 
-  // ---- Incorporamento Google Docs/Fogli ----
+  // ---- Incorporamento Google Workspace ----
   gdocOpenInDrive: "Apri in Google Docs",
   gsheetOpenInDrive: "Apri in Fogli Google",
+  gslidesOpenInDrive: "Apri in Presentazioni Google",
+  gdrawOpenInDrive: "Apri in Disegni Google",
   gdocInvalidBlock: "Incorporamento file Google non valido (ID documento mancante).",
 
   // ---- Impostazioni: sincronizzazione automatica ----
@@ -304,4 +306,63 @@ export const it: Partial<Messages> = {
   driveActionCheckFolder: "verificare la cartella",
   driveActionSearchFolder: "cercare la cartella",
   driveActionCreateFolder: "creare la cartella",
+
+  // ---- Schede delle impostazioni ----
+  tabAccount: "Account",
+  tabTargets: "Destinazioni",
+  tabAutoSync: "Sync automatica",
+  tabConfigSync: "Impostazioni plugin",
+  tabActions: "Azioni e registro",
+
+  // ---- Sincronizzazione delle impostazioni ----
+  configSyncHeading: "Sincronizza le impostazioni del plugin",
+  configSyncEnabledName: "Sincronizza le impostazioni di questo plugin",
+  configSyncEnabledDesc:
+    "Mantiene sincronizzate tra i tuoi dispositivi le impostazioni di questo plugin (destinazioni di sincronizzazione, filtri, opzioni). Le credenziali sono cifrate con una passphrase che non lascia mai questo dispositivo.",
+  configSyncOtherPluginsName: "Sincronizza anche le impostazioni di altri plugin",
+  configSyncOtherPluginsDesc:
+    "Sincronizza anche il data.json di OGNI altro plugin installato (solo per i plugin già installati su entrambi i dispositivi). Ogni file è cifrato completamente con la tua passphrase, così eventuali segreti restano illeggibili su Drive. Gli altri plugin di solito richiedono un riavvio di Obsidian per applicare le modifiche.",
+  configSyncChanged: "Sync impostazioni: {up} caricati, {down} scaricati.",
+  configSyncFolderName: "Cartella Drive di configurazione",
+  configSyncFolderDesc:
+    "Cartella Google Drive dedicata al file delle impostazioni. Tienila separata dalle cartelle delle note.",
+  configSyncFolderPlaceholder: "ID cartella Drive",
+  configSyncCheckFolderButton: "Verifica",
+  configSyncCreateFolderButton: "Crea \"Obsidian config\"",
+  configSyncPassphraseName: "Passphrase",
+  configSyncPassphraseDesc:
+    "Cifra le credenziali nelle impostazioni caricate. Inserisci la STESSA passphrase su ogni dispositivo. Non viene mai caricata né salvata su disco.",
+  configSyncPassphrasePlaceholder: "Inserisci la passphrase",
+  configSyncSetPassphraseButton: "Imposta passphrase",
+  configSyncSyncButton: "Sincronizza le impostazioni ora",
+  configSyncCommandName: "Sincronizza ora le impostazioni del plugin",
+  configSyncPassphraseSet: "Sync impostazioni: passphrase accettata.",
+  configSyncPassphraseRejected:
+    "Sync impostazioni: questa passphrase non corrisponde a quella usata in precedenza per questa cartella.",
+  configSyncPassphraseNeeded:
+    "Sync impostazioni: imposta prima una passphrase nelle impostazioni.",
+  configSyncNotSignedIn: "non connesso",
+  configSyncNoFolder: "nessuna cartella Drive di configurazione impostata",
+  configSyncNoPassphrase: "nessuna passphrase impostata",
+  configSyncWrongPassphrase: "passphrase errata",
+  configSyncRunning: "Sync impostazioni: sincronizzazione in corso…",
+  configSyncUploaded: "Sync impostazioni: impostazioni caricate su Drive.",
+  configSyncDownloaded:
+    "Sync impostazioni: impostazioni scaricate e applicate.",
+  configSyncNoop: "Sync impostazioni: già aggiornato.",
+  configSyncSkipped: "Sync impostazioni: saltato ({reason}).",
+  configSyncFailed: "Sync impostazioni non riuscita: {error}",
+  configSyncAlreadyRunning: "Sync impostazioni: già in corso…",
+  configSyncDecryptFailed:
+    "Sync impostazioni: la passphrase non corrisponde alle impostazioni già cifrate su Drive. Non è stato modificato nulla. Inserisci la passphrase usata sul primo dispositivo.",
+
+  // ---- Finestra di conflitto ----
+  configConflictTitle: "Impostazioni modificate su entrambi i lati",
+  configConflictBody:
+    "Le impostazioni di questo plugin sono state modificate sia qui sia su Drive dall'ultima sincronizzazione. Scegli quale versione mantenere.",
+  configConflictLocalMtime: "Questo dispositivo: ultima modifica {time}",
+  configConflictRemoteMtime: "Drive: ultima modifica {time}",
+  configConflictKeepLocal: "Mantieni le impostazioni di questo dispositivo",
+  configConflictKeepRemote: "Mantieni le impostazioni di Drive",
+  configConflictCancel: "Annulla",
 };

@@ -115,13 +115,15 @@ export const en = {
   neverDeleteRemoteName: "Do not delete in Google Drive",
   neverDeleteRemoteDesc:
     "When enabled, a locally deleted file is NOT removed from Google Drive. The file stays in Drive and does not come back locally. Via “Only in Drive” below you can download individual files locally again. Default: off.",
-  syncGoogleDocsName: "Sync Google Docs & Sheets (view-only)",
+  syncGoogleDocsName: "Sync Google Workspace files (view-only)",
   syncGoogleDocsDesc:
-    "Create a small note per Google Doc and Sheet that embeds the live Google editor (editable on desktop; opens externally on mobile). The file itself is not downloaded and never uploaded back. Default: off.",
+    "Create a small note per Google Doc, Sheet, Slides and Drawing that embeds the live Google editor (editable on desktop; opens externally on mobile). The file itself is not downloaded and never uploaded back. Default: off.",
 
-  // ---- Google Docs/Sheets embed (gdoc-embed.ts) ----
+  // ---- Google Workspace embed (gdoc-embed.ts) ----
   gdocOpenInDrive: "Open in Google Docs",
   gsheetOpenInDrive: "Open in Google Sheets",
+  gslidesOpenInDrive: "Open in Google Slides",
+  gdrawOpenInDrive: "Open in Google Drawings",
   gdocInvalidBlock: "Invalid Google file embed (missing document id).",
 
   // ---- Settings: auto-sync (settings-tab.ts) ----
@@ -295,6 +297,64 @@ export const en = {
   driveActionCheckFolder: "check folder",
   driveActionSearchFolder: "search folder",
   driveActionCreateFolder: "create folder",
+
+  // ---- Settings tabs (settings-tab.ts) ----
+  tabAccount: "Account",
+  tabTargets: "Sync targets",
+  tabAutoSync: "Auto-sync",
+  tabConfigSync: "Plugin settings",
+  tabActions: "Actions & log",
+
+  // ---- Config sync (config-sync.ts / main.ts / settings-tab.ts) ----
+  configSyncHeading: "Sync plugin settings",
+  configSyncEnabledName: "Sync this plugin's settings",
+  configSyncEnabledDesc:
+    "Keep this plugin's own settings (sync targets, filters, options) in sync across your devices. Credentials are encrypted with a passphrase that never leaves this device.",
+  configSyncOtherPluginsName: "Also sync other plugins' settings",
+  configSyncOtherPluginsDesc:
+    "Also sync the data.json of every OTHER installed plugin (only for plugins already installed on both devices). Each file is fully encrypted with your passphrase, so any secrets they store stay unreadable in Drive. Other plugins usually need an Obsidian reload to apply.",
+  configSyncChanged: "Config sync: {up} uploaded, {down} downloaded.",
+  configSyncFolderName: "Config Drive folder",
+  configSyncFolderDesc:
+    "Dedicated Google Drive folder for the settings file. Keep it separate from your note folders.",
+  configSyncFolderPlaceholder: "Drive folder ID",
+  configSyncCheckFolderButton: "Check",
+  configSyncCreateFolderButton: "Create \"Obsidian config\"",
+  configSyncPassphraseName: "Passphrase",
+  configSyncPassphraseDesc:
+    "Encrypts the credentials in the uploaded settings. Enter the SAME passphrase on every device. It is never uploaded or stored on disk.",
+  configSyncPassphrasePlaceholder: "Enter passphrase",
+  configSyncSetPassphraseButton: "Set passphrase",
+  configSyncSyncButton: "Sync settings now",
+  configSyncCommandName: "Sync plugin settings now",
+  configSyncPassphraseSet: "Config sync: passphrase accepted.",
+  configSyncPassphraseRejected:
+    "Config sync: that passphrase does not match the one used before on this folder.",
+  configSyncPassphraseNeeded:
+    "Config sync: set a passphrase in the settings first.",
+  configSyncNotSignedIn: "not signed in",
+  configSyncNoFolder: "no config Drive folder set",
+  configSyncNoPassphrase: "no passphrase set",
+  configSyncWrongPassphrase: "wrong passphrase",
+  configSyncRunning: "Config sync: syncing settings…",
+  configSyncUploaded: "Config sync: settings uploaded to Drive.",
+  configSyncDownloaded: "Config sync: settings downloaded and applied.",
+  configSyncNoop: "Config sync: already up to date.",
+  configSyncSkipped: "Config sync: skipped ({reason}).",
+  configSyncFailed: "Config sync failed: {error}",
+  configSyncAlreadyRunning: "Config sync: already running…",
+  configSyncDecryptFailed:
+    "Config sync: the passphrase does not match the encrypted settings already in Drive. Nothing was changed. Enter the passphrase you used on the first device.",
+
+  // ---- Config-sync conflict modal (config-conflict-modal.ts) ----
+  configConflictTitle: "Settings changed on both sides",
+  configConflictBody:
+    "This plugin's settings changed both here and on Drive since the last sync. Choose which version to keep.",
+  configConflictLocalMtime: "This device: last changed {time}",
+  configConflictRemoteMtime: "Drive: last changed {time}",
+  configConflictKeepLocal: "Keep this device's settings",
+  configConflictKeepRemote: "Keep Drive's settings",
+  configConflictCancel: "Cancel",
 } as const;
 
 /** Schlüssel-Set + Wert-Typen aller Übersetzungen (Autoritätsquelle). */

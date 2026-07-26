@@ -132,7 +132,52 @@ export interface PluginSettings {
    * resume passes but more memory per run. Default 400.
    */
   batchSize: number;
+
+  // --- Config sync (this plugin's own settings across devices) -------------
+  // A separate subsystem from note sync: it uploads this plugin's `data.json`
+  // to a dedicated Drive folder so a second device inherits the same targets/
+  // options. Credentials are AES-GCM encrypted with a per-device passphrase
+  // that is never synced. These fields are DEVICE-LOCAL and are stripped from
+  // the uploaded payload (see `configSyncDeviceLocalKeys`).
+
+  /** Master switch for config sync. Off by default. */
+  configSyncEnabled: boolean;
+  /** Drive folder id that holds the synced config file. */
+  configDriveFolderId: string;
+  /** Human-readable name of that folder (for the settings UI). */
+  configDriveFolderName: string;
+  /** Shared-drive id if the config folder lives in a Shared Drive (else ""). */
+  configDriveSharedId: string;
+  /**
+   * Device-local, OBFUSCATED config-sync passphrase (see crypto-box.ts). Stored
+   * so config sync can run unattended (auto-sync) without re-prompting. Bound to
+   * this device — a copied data.json won't de-obfuscate it. Never uploaded.
+   * Empty = no passphrase stored on this device.
+   */
+  configPassphraseObf: string;
+  /**
+   * Also sync OTHER installed plugins' `data.json` (not just this plugin's).
+   * Each other-plugin file is WHOLE-FILE encrypted under the passphrase (we
+   * can't know which of their fields are secret). Off by default. Device-local
+   * (a device without a plugin simply doesn't have its file to sync).
+   */
+  configSyncOtherPlugins: boolean;
 }
+
+/**
+ * Settings keys that are DEVICE-LOCAL: stripped from THIS plugin's config
+ * payload before it is uploaded (they would otherwise round-trip a device's own
+ * Drive-folder pointer / passphrase onto another device). The rest of the file
+ * (credentials included) is WHOLE-FILE encrypted under the passphrase.
+ */
+export const CONFIG_SYNC_DEVICE_LOCAL_KEYS = [
+  "configSyncEnabled",
+  "configDriveFolderId",
+  "configDriveFolderName",
+  "configDriveSharedId",
+  "configPassphraseObf",
+  "configSyncOtherPlugins",
+] as const;
 
 /**
  * State of a file (or folder) at the last successful sync —
@@ -247,6 +292,12 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   debugLogging: false,
   batchEnabled: false,
   batchSize: 400,
+  configSyncEnabled: false,
+  configDriveFolderId: "",
+  configDriveFolderName: "",
+  configDriveSharedId: "",
+  configPassphraseObf: "",
+  configSyncOtherPlugins: false,
 };
 
 /** Builds a fresh, empty sync target with sensible defaults. */

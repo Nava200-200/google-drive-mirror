@@ -1,6 +1,6 @@
 {
   "name": "obsidian-google-drive-mirror",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Sync multiple vault folders to multiple Google Drive folders, including Shared Drives. Each pairing syncs a subfolder or the whole vault two-way, mirrors the folder structure, and picks up files created directly in Drive.",
   "main": "main.js",
   "scripts": {

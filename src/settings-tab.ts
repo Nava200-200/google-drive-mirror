@@ -13,7 +13,8 @@ import { DriveFolderSuggest, LocalFolderSuggest } from "./suggesters";
 import { log, setDebugLogging } from "./logger";
 import { t } from "./i18n";
 import { isFilteredByTargetSettings } from "./ignore";
-import type { SyncStateEntry, SyncTarget } from "./types";
+import type { PluginSettings, SyncStateEntry, SyncTarget } from "./types";
+import type { SyncStatus } from "./sync-status";
 
 /**
  * Settings UI: OAuth setup (your own Google Cloud app), folder selection,
@@ -26,6 +27,10 @@ export class SettingsTab extends PluginSettingTab {
   private unsubscribe: (() => void) | null = null;
   private statusEl: HTMLElement | null = null;
   private syncButton: ButtonComponent | null = null;
+  /** Config-sync live status line + its subscription + its sync button. */
+  private configStatusEl: HTMLElement | null = null;
+  private configUnsubscribe: (() => void) | null = null;
+  private configSyncButton: ButtonComponent | null = null;
   /** Per-target stable tree containers, so each can be refilled without a full re-render. */
   private treeEls = new Map<string, HTMLElement>();
   /** Per-target description lines of the sync tree (for the "Drive-only" counter). */
@@ -43,6 +48,10 @@ export class SettingsTab extends PluginSettingTab {
     // Release the subscription when the tab closes.
     this.unsubscribe?.();
     this.unsubscribe = null;
+    this.configUnsubscribe?.();
+    this.configUnsubscribe = null;
+    this.configStatusEl = null;
+    this.configSyncButton = null;
     this.statusEl = null;
     this.treeEls.clear();
     this.treeDescSettings.clear();
@@ -50,17 +59,77 @@ export class SettingsTab extends PluginSettingTab {
     this.pendingSubfolder.clear();
   }
 
+  /**
+   * The settings page is split into TABS (the flat page grew too long). Each tab
+   * renders one section into a shared body container. `activeTab` persists across
+   * re-renders within a session; default is "actions".
+   */
+  private static readonly TABS = [
+    "account",
+    "targets",
+    "autosync",
+    "config",
+    "actions",
+  ] as const;
+  private activeTab: (typeof SettingsTab.TABS)[number] = "actions";
+
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    // Release the previous subscription (display can run multiple times).
+    // Release the previous subscriptions (display can run multiple times).
     this.unsubscribe?.();
+    this.configUnsubscribe?.();
     // The DOM is rebuilt below; drop stale per-target tree references.
     this.treeEls.clear();
     this.treeDescSettings.clear();
-    const s = this.plugin.settings;
 
     new Setting(containerEl).setName(t("settingsTitle")).setHeading();
+
+    // Tab bar.
+    const tabBar = containerEl.createDiv({ cls: "gds-tab-bar" });
+    const tabLabel: Record<(typeof SettingsTab.TABS)[number], string> = {
+      account: t("tabAccount"),
+      targets: t("tabTargets"),
+      autosync: t("tabAutoSync"),
+      config: t("tabConfigSync"),
+      actions: t("tabActions"),
+    };
+    for (const tab of SettingsTab.TABS) {
+      const btn = tabBar.createEl("button", {
+        cls: "gds-tab" + (tab === this.activeTab ? " is-active" : ""),
+        text: tabLabel[tab],
+      });
+      btn.onclick = () => {
+        if (this.activeTab === tab) return;
+        this.activeTab = tab;
+        this.display();
+      };
+    }
+
+    // Body for the active tab.
+    const body = containerEl.createDiv({ cls: "gds-tab-body" });
+    switch (this.activeTab) {
+      case "account":
+        this.renderAccountTab(body);
+        break;
+      case "targets":
+        this.renderTargetsTab(body);
+        break;
+      case "autosync":
+        this.renderAutoSyncTab(body);
+        break;
+      case "config":
+        this.renderConfigSync(body, this.plugin.settings);
+        break;
+      case "actions":
+        this.renderActionsTab(body);
+        break;
+    }
+  }
+
+  /** Account / Google Cloud app tab. */
+  private renderAccountTab(containerEl: HTMLElement): void {
+    const s = this.plugin.settings;
 
     // ---- 1. Google Cloud app ----
     new Setting(containerEl).setName(t("headingCloudAccess")).setHeading();
@@ -150,7 +219,10 @@ export class SettingsTab extends PluginSettingTab {
     }
 
     this.renderTokenTransfer(containerEl);
+  }
 
+  /** Sync targets tab. */
+  private renderTargetsTab(containerEl: HTMLElement): void {
     // ---- 2. Sync targets ----
     new Setting(containerEl).setName(t("headingTargets")).setHeading();
     containerEl.createEl("p", {
@@ -178,6 +250,11 @@ export class SettingsTab extends PluginSettingTab {
           this.display();
         })
     );
+  }
+
+  /** Auto-sync tab (polling, debounce, retention, batching, debug). */
+  private renderAutoSyncTab(containerEl: HTMLElement): void {
+    const s = this.plugin.settings;
 
     // ---- 3. Auto-sync ----
     new Setting(containerEl).setName(t("headingAutoSync")).setHeading();
@@ -264,7 +341,10 @@ export class SettingsTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         })
       );
+  }
 
+  /** Actions & status tab (manual sync, live status, log, reset). */
+  private renderActionsTab(containerEl: HTMLElement): void {
     // ---- 4. Actions & status ----
     new Setting(containerEl).setName(t("headingActionsStatus")).setHeading();
 
@@ -350,6 +430,189 @@ export class SettingsTab extends PluginSettingTab {
    * - Everywhere: a collapsible "sign in with a token" paste field. On mobile
    *   it's expanded by default (it's the only way to sign in there).
    */
+  /**
+   * Config-sync section: sync THIS plugin's own settings across devices. A
+   * separate subsystem from note sync — its own toggle, dedicated Drive folder,
+   * per-device passphrase (never persisted), and manual sync button.
+   */
+  private renderConfigSync(
+    containerEl: HTMLElement,
+    s: PluginSettings
+  ): void {
+    new Setting(containerEl).setName(t("configSyncHeading")).setHeading();
+
+    new Setting(containerEl)
+      .setName(t("configSyncEnabledName"))
+      .setDesc(t("configSyncEnabledDesc"))
+      .addToggle((c) =>
+        c.setValue(s.configSyncEnabled).onChange(async (v) => {
+          s.configSyncEnabled = v;
+          await this.plugin.saveSettings();
+          this.display(); // show/hide the rest of the section
+        })
+      );
+
+    // The folder / passphrase / sync controls only matter when enabled.
+    if (!s.configSyncEnabled) return;
+
+    // Also sync OTHER plugins' settings (whole-file encrypted).
+    new Setting(containerEl)
+      .setName(t("configSyncOtherPluginsName"))
+      .setDesc(t("configSyncOtherPluginsDesc"))
+      .addToggle((c) =>
+        c.setValue(s.configSyncOtherPlugins).onChange(async (v) => {
+          s.configSyncOtherPlugins = v;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    // Dedicated Drive folder for the config file.
+    new Setting(containerEl)
+      .setName(t("configSyncFolderName"))
+      .setDesc(t("configSyncFolderDesc"))
+      .addText((c) => {
+        c.setPlaceholder(t("configSyncFolderPlaceholder"))
+          .setValue(s.configDriveFolderName || s.configDriveFolderId)
+          .onChange(async (v) => {
+            // Free-text id entry; validated via the Check button.
+            s.configDriveFolderId = v.trim();
+            await this.plugin.saveSettings();
+          });
+      })
+      .addButton((b) =>
+        b.setButtonText(t("configSyncCheckFolderButton")).onClick(async () => {
+          try {
+            const folder = await this.plugin.drive.getFolder(
+              s.configDriveFolderId
+            );
+            s.configDriveFolderId = folder.id;
+            s.configDriveFolderName = folder.name;
+            s.configDriveSharedId = folder.driveId ?? "";
+            await this.plugin.saveSettings();
+            const loc = folder.driveId ? t("sharedDriveSuffix") : "";
+            new Notice(
+              t("driveFolderFound", { name: folder.name, location: loc })
+            );
+            this.display();
+          } catch (e) {
+            new Notice(
+              t("driveFolderInvalid", {
+                error: e instanceof Error ? e.message : String(e),
+              })
+            );
+          }
+        })
+      )
+      .addExtraButton((b) =>
+        b
+          .setIcon("folder-plus")
+          .setTooltip(t("configSyncCreateFolderButton"))
+          .onClick(async () => {
+            try {
+              const folder =
+                await this.plugin.drive.createFolder("Obsidian config");
+              s.configDriveFolderId = folder.id;
+              s.configDriveFolderName = folder.name;
+              s.configDriveSharedId = "";
+              await this.plugin.saveSettings();
+              new Notice(t("driveFolderCreated", { name: folder.name }));
+              this.display();
+            } catch (e) {
+              new Notice(
+                t("driveFolderCreateFailed", {
+                  error: e instanceof Error ? e.message : String(e),
+                })
+              );
+            }
+          })
+      );
+
+    // Per-device passphrase (in-memory only). Establishing it validates against
+    // the folder's verifier blob (or writes one on first use).
+    let pendingPass = "";
+    new Setting(containerEl)
+      .setName(t("configSyncPassphraseName"))
+      .setDesc(t("configSyncPassphraseDesc"))
+      .addText((c) => {
+        c.setPlaceholder(t("configSyncPassphrasePlaceholder")).onChange((v) => {
+          pendingPass = v;
+        });
+        c.inputEl.type = "password";
+      })
+      .addButton((b) =>
+        b
+          .setButtonText(t("configSyncSetPassphraseButton"))
+          .onClick(async () => {
+            if (!pendingPass) return;
+            try {
+              const ok = await this.plugin.configSync.establishPassphrase(
+                pendingPass
+              );
+              if (ok) {
+                await this.plugin.setConfigPassphrase(pendingPass);
+                new Notice(t("configSyncPassphraseSet"));
+              } else {
+                new Notice(t("configSyncPassphraseRejected"), 12000);
+              }
+            } catch (e) {
+              new Notice(
+                t("configSyncFailed", {
+                  error: e instanceof Error ? e.message : String(e),
+                }),
+                12000
+              );
+            }
+            this.display();
+          })
+      );
+
+    // Sync button — enabled only once a passphrase is set this session.
+    new Setting(containerEl)
+      .setName(t("configSyncSyncButton"))
+      .addButton((b) => {
+        this.configSyncButton = b;
+        b.setButtonText(t("configSyncSyncButton")).setCta();
+        b.onClick(() => {
+          void this.plugin.runConfigSync(true);
+        });
+        this.refreshConfigSyncButton();
+      });
+
+    // Live status line (same look as note sync).
+    this.configStatusEl = containerEl.createDiv({ cls: "gds-status" });
+
+    // Config-sync log: opens the SAME live modal, bound to the config log.
+    new Setting(containerEl)
+      .setName(t("syncLogName"))
+      .setDesc(t("syncLogDesc"))
+      .addButton((b) =>
+        b.setButtonText(t("showLogButton")).onClick(() => {
+          new SyncLogModal(this.app, this.plugin, this.plugin.configStatus).open();
+        })
+      )
+      .addExtraButton((b) =>
+        b
+          .setIcon("trash-2")
+          .setTooltip(t("clearLogTooltip"))
+          .onClick(() => this.plugin.configStatus.clearLog())
+      );
+
+    // Subscribe live to the config status (status line + button state).
+    this.configUnsubscribe = this.plugin.configStatus.subscribe(() => {
+      this.renderStatusInto(this.configStatusEl, this.plugin.configStatus);
+      this.refreshConfigSyncButton();
+    });
+    this.renderStatusInto(this.configStatusEl, this.plugin.configStatus);
+  }
+
+  /** Disables the config-sync button while a run is in progress / no passphrase. */
+  private refreshConfigSyncButton(): void {
+    if (!this.configSyncButton) return;
+    this.configSyncButton.setDisabled(
+      this.plugin.isConfigSyncing() || !this.plugin.hasConfigPassphrase()
+    );
+  }
+
   private renderTokenTransfer(containerEl: HTMLElement): void {
     const signedIn = Boolean(this.plugin.exportRefreshToken());
 
@@ -923,14 +1186,23 @@ export class SettingsTab extends PluginSettingTab {
 
   /** Renders the live status line. */
   private renderStatus(): void {
-    if (!this.statusEl) return;
-    const p = this.plugin.status.getProgress();
-    this.statusEl.empty();
-    this.statusEl.removeClass("is-running", "is-done", "is-error");
+    this.renderStatusInto(this.statusEl, this.plugin.status);
+  }
+
+  /** Renders a status line for any `SyncStatus` into any element (shared by
+   * note sync and config sync). */
+  private renderStatusInto(
+    el: HTMLElement | null,
+    status: SyncStatus
+  ): void {
+    if (!el) return;
+    const p = status.getProgress();
+    el.empty();
+    el.removeClass("is-running", "is-done", "is-error");
 
     let label = t("statusLineReady");
     if (p.phase === "running") {
-      this.statusEl.addClass("is-running");
+      el.addClass("is-running");
       // The message already carries the "(done/total)" count at its start (the
       // engine builds it via describeAction), so we do NOT render the count a
       // second time here — that produced the duplicate "(x/y) … (x/y)".
@@ -940,13 +1212,13 @@ export class SettingsTab extends PluginSettingTab {
         secs,
       })}`;
     } else if (p.phase === "done") {
-      this.statusEl.addClass("is-done");
+      el.addClass("is-done");
       label = `✅ ${t("statusLineDone", { message: p.message })}`;
     } else if (p.phase === "error") {
-      this.statusEl.addClass("is-error");
+      el.addClass("is-error");
       label = `⚠️ ${t("statusLineError", { message: p.message })}`;
     }
-    this.statusEl.setText(label);
+    el.setText(label);
   }
 }
 
@@ -957,9 +1229,20 @@ export class SettingsTab extends PluginSettingTab {
 export class SyncLogModal extends Modal {
   private unsubscribe: (() => void) | null = null;
   private listEl: HTMLElement | null = null;
+  private status: SyncStatus;
 
-  constructor(app: App, private plugin: GoogleDriveSyncPlugin) {
+  /**
+   * @param status Which log to show. Defaults to the note-sync status; the
+   *               config-sync section passes `plugin.configStatus` so the SAME
+   *               modal renders the config log.
+   */
+  constructor(
+    app: App,
+    private plugin: GoogleDriveSyncPlugin,
+    status?: SyncStatus
+  ) {
     super(app);
+    this.status = status ?? plugin.status;
   }
 
   onOpen(): void {
@@ -969,17 +1252,17 @@ export class SyncLogModal extends Modal {
     const controls = this.contentEl.createDiv({ cls: "gds-log-controls" });
     const info = controls.createSpan({ cls: "gds-log-count" });
     const clearBtn = controls.createEl("button", { text: t("logModalClearButton") });
-    clearBtn.onclick = () => this.plugin.status.clearLog();
+    clearBtn.onclick = () => this.status.clearLog();
 
     this.listEl = this.contentEl.createDiv({ cls: "gds-log gds-log--modal" });
 
     const render = () => {
-      const entries = this.plugin.status.getLog();
+      const entries = this.status.getLog();
       info.setText(t("logModalCount", { count: entries.length }));
       this.renderList(entries);
     };
     // Subscribe live; unsubscribe on close.
-    this.unsubscribe = this.plugin.status.subscribe(render);
+    this.unsubscribe = this.status.subscribe(render);
     render();
   }
 

@@ -119,13 +119,15 @@ export const fr: Partial<Messages> = {
   neverDeleteRemoteName: "Ne pas supprimer dans Google Drive",
   neverDeleteRemoteDesc:
     "Si activé, un fichier supprimé localement n'est PAS retiré de Google Drive. Le fichier reste dans Drive et ne revient pas localement. Via « Uniquement dans Drive » ci-dessous, vous pouvez retélécharger des fichiers individuels localement. Par défaut : désactivé.",
-  syncGoogleDocsName: "Synchroniser Google Docs et Sheets (lecture seule)",
+  syncGoogleDocsName: "Synchroniser les fichiers Google Workspace (lecture seule)",
   syncGoogleDocsDesc:
-    "Crée une petite note par Google Doc et Sheet qui intègre l'éditeur Google en direct (modifiable sur ordinateur ; ouvert en externe sur mobile). Le fichier lui-même n'est pas téléchargé ni jamais renvoyé. Par défaut : désactivé.",
+    "Crée une petite note par Google Doc, Sheet, Slides et Drawing qui intègre l'éditeur Google en direct (modifiable sur ordinateur ; ouvert en externe sur mobile). Le fichier lui-même n'est pas téléchargé ni jamais renvoyé. Par défaut : désactivé.",
 
-  // ---- Intégration Google Docs/Sheets ----
+  // ---- Intégration Google Workspace ----
   gdocOpenInDrive: "Ouvrir dans Google Docs",
   gsheetOpenInDrive: "Ouvrir dans Google Sheets",
+  gslidesOpenInDrive: "Ouvrir dans Google Slides",
+  gdrawOpenInDrive: "Ouvrir dans Google Drawings",
   gdocInvalidBlock: "Intégration de fichier Google invalide (identifiant de document manquant).",
 
   // ---- Paramètres : synchronisation automatique ----
@@ -308,4 +310,63 @@ export const fr: Partial<Messages> = {
   driveActionCheckFolder: "vérifier le dossier",
   driveActionSearchFolder: "rechercher le dossier",
   driveActionCreateFolder: "créer le dossier",
+
+  // ---- Onglets des réglages ----
+  tabAccount: "Compte",
+  tabTargets: "Cibles de sync",
+  tabAutoSync: "Sync auto",
+  tabConfigSync: "Réglages du plugin",
+  tabActions: "Actions et journal",
+
+  // ---- Synchronisation des réglages ----
+  configSyncHeading: "Synchroniser les réglages du plugin",
+  configSyncEnabledName: "Synchroniser les réglages de ce plugin",
+  configSyncEnabledDesc:
+    "Garde les réglages de ce plugin (cibles de synchronisation, filtres, options) synchronisés entre vos appareils. Les identifiants sont chiffrés avec une phrase secrète qui ne quitte jamais cet appareil.",
+  configSyncOtherPluginsName: "Synchroniser aussi les réglages des autres plugins",
+  configSyncOtherPluginsDesc:
+    "Synchronise également le data.json de CHAQUE autre plugin installé (uniquement pour les plugins déjà installés sur les deux appareils). Chaque fichier est entièrement chiffré avec votre phrase secrète, afin que les secrets qu'ils contiennent restent illisibles sur Drive. Les autres plugins nécessitent généralement un redémarrage d'Obsidian pour appliquer les changements.",
+  configSyncChanged: "Sync des réglages : {up} envoyé(s), {down} téléchargé(s).",
+  configSyncFolderName: "Dossier Drive de configuration",
+  configSyncFolderDesc:
+    "Dossier Google Drive dédié au fichier de réglages. Gardez-le séparé de vos dossiers de notes.",
+  configSyncFolderPlaceholder: "ID du dossier Drive",
+  configSyncCheckFolderButton: "Vérifier",
+  configSyncCreateFolderButton: "Créer « Obsidian config »",
+  configSyncPassphraseName: "Phrase secrète",
+  configSyncPassphraseDesc:
+    "Chiffre les identifiants dans les réglages envoyés. Saisissez la MÊME phrase secrète sur chaque appareil. Elle n'est jamais envoyée ni stockée sur le disque.",
+  configSyncPassphrasePlaceholder: "Saisir la phrase secrète",
+  configSyncSetPassphraseButton: "Définir la phrase secrète",
+  configSyncSyncButton: "Synchroniser les réglages maintenant",
+  configSyncCommandName: "Synchroniser les réglages du plugin maintenant",
+  configSyncPassphraseSet: "Sync des réglages : phrase secrète acceptée.",
+  configSyncPassphraseRejected:
+    "Sync des réglages : cette phrase secrète ne correspond pas à celle utilisée précédemment pour ce dossier.",
+  configSyncPassphraseNeeded:
+    "Sync des réglages : définissez d'abord une phrase secrète dans les réglages.",
+  configSyncNotSignedIn: "non connecté",
+  configSyncNoFolder: "aucun dossier Drive de configuration défini",
+  configSyncNoPassphrase: "aucune phrase secrète définie",
+  configSyncWrongPassphrase: "phrase secrète incorrecte",
+  configSyncRunning: "Sync des réglages : synchronisation en cours…",
+  configSyncUploaded: "Sync des réglages : réglages envoyés vers Drive.",
+  configSyncDownloaded:
+    "Sync des réglages : réglages téléchargés et appliqués.",
+  configSyncNoop: "Sync des réglages : déjà à jour.",
+  configSyncSkipped: "Sync des réglages : ignoré ({reason}).",
+  configSyncFailed: "Échec de la sync des réglages : {error}",
+  configSyncAlreadyRunning: "Sync des réglages : déjà en cours…",
+  configSyncDecryptFailed:
+    "Sync des réglages : la phrase secrète ne correspond pas aux réglages déjà chiffrés sur Drive. Rien n'a été modifié. Saisissez la phrase secrète utilisée sur le premier appareil.",
+
+  // ---- Dialogue de conflit ----
+  configConflictTitle: "Réglages modifiés des deux côtés",
+  configConflictBody:
+    "Les réglages de ce plugin ont été modifiés à la fois ici et sur Drive depuis la dernière synchronisation. Choisissez la version à conserver.",
+  configConflictLocalMtime: "Cet appareil : dernière modification {time}",
+  configConflictRemoteMtime: "Drive : dernière modification {time}",
+  configConflictKeepLocal: "Conserver les réglages de cet appareil",
+  configConflictKeepRemote: "Conserver les réglages de Drive",
+  configConflictCancel: "Annuler",
 };
