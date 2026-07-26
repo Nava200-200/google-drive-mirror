@@ -119,6 +119,14 @@ export const fr: Partial<Messages> = {
   neverDeleteRemoteName: "Ne pas supprimer dans Google Drive",
   neverDeleteRemoteDesc:
     "Si activé, un fichier supprimé localement n'est PAS retiré de Google Drive. Le fichier reste dans Drive et ne revient pas localement. Via « Uniquement dans Drive » ci-dessous, vous pouvez retélécharger des fichiers individuels localement. Par défaut : désactivé.",
+  syncGoogleDocsName: "Synchroniser Google Docs et Sheets (lecture seule)",
+  syncGoogleDocsDesc:
+    "Crée une petite note par Google Doc et Sheet qui intègre l'éditeur Google en direct (modifiable sur ordinateur ; ouvert en externe sur mobile). Le fichier lui-même n'est pas téléchargé ni jamais renvoyé. Par défaut : désactivé.",
+
+  // ---- Intégration Google Docs/Sheets ----
+  gdocOpenInDrive: "Ouvrir dans Google Docs",
+  gsheetOpenInDrive: "Ouvrir dans Google Sheets",
+  gdocInvalidBlock: "Intégration de fichier Google invalide (identifiant de document manquant).",
 
   // ---- Paramètres : synchronisation automatique ----
   headingAutoSync: "3. Synchronisation automatique",

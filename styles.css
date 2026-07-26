@@ -262,3 +262,49 @@
   font-size: var(--font-ui-small);
   padding: 0.35rem 0;
 }
+
+/* Google Docs/Sheets live embed (rendered from a `gdoc` code block in a stub). */
+
+/* Full-width embed WITHOUT negative-margin breakout (which got clipped by the
+   readable-line-width column). Instead, for a note that CONTAINS our embed, lift
+   the readable-line-width cap on the content column so the whole note — and thus
+   the embed inside it — uses the full pane width. Applied to both Live Preview
+   (.cm-sizer / .cm-content) and Reading view (.markdown-preview-sizer). These are
+   STATIC styles present before the webview loads (never mutated after), so they
+   do not blank the guest.
+
+   `:has()` scopes it to notes that actually have an embed, so ordinary notes keep
+   their readable width. */
+.markdown-source-view.is-readable-line-width:has(.gds-gdoc-embed) .cm-sizer,
+.markdown-source-view.is-readable-line-width:has(.gds-gdoc-embed) .cm-content,
+.markdown-preview-view.is-readable-line-width:has(.gds-gdoc-embed)
+  .markdown-preview-sizer {
+  max-width: none !important;
+}
+
+.gds-gdoc-embed {
+  width: 100%;
+}
+.gds-gdoc-webview {
+  width: 100%;
+  height: 80vh;
+  min-height: 480px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+}
+.gds-gdoc-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 1rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+}
+.gds-gdoc-title {
+  font-weight: var(--font-semibold);
+}
+.gds-gdoc-error {
+  color: var(--text-error);
+  padding: 0.5rem;
+}

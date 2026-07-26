@@ -69,6 +69,16 @@ export interface SyncTarget {
    * Default: false.
    */
   neverDeleteRemote: boolean;
+
+  /**
+   * "Sync Google Docs (view-only)". When true, native Google Docs
+   * (`application/vnd.google-apps.document`) found in this target's Drive folder
+   * are represented in the vault as small stub notes (`<name>.gdoc.md`) that
+   * embed the live Google editor. The document content itself is never
+   * downloaded or uploaded — this is a discovery + view layer that sits OUTSIDE
+   * the reconciler (stub files are auto-excluded from sync). Default: false.
+   */
+  syncGoogleDocs: boolean;
 }
 
 /** Persistent plugin settings (stored in data.json). */
@@ -259,6 +269,7 @@ export function newTarget(id: string, name: string): SyncTarget {
     ignorePatterns: DEFAULT_IGNORE_PATTERNS,
     excludeFolders: "",
     neverDeleteRemote: false,
+    syncGoogleDocs: false,
   };
 }
 

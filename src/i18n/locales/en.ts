@@ -115,6 +115,14 @@ export const en = {
   neverDeleteRemoteName: "Do not delete in Google Drive",
   neverDeleteRemoteDesc:
     "When enabled, a locally deleted file is NOT removed from Google Drive. The file stays in Drive and does not come back locally. Via “Only in Drive” below you can download individual files locally again. Default: off.",
+  syncGoogleDocsName: "Sync Google Docs & Sheets (view-only)",
+  syncGoogleDocsDesc:
+    "Create a small note per Google Doc and Sheet that embeds the live Google editor (editable on desktop; opens externally on mobile). The file itself is not downloaded and never uploaded back. Default: off.",
+
+  // ---- Google Docs/Sheets embed (gdoc-embed.ts) ----
+  gdocOpenInDrive: "Open in Google Docs",
+  gsheetOpenInDrive: "Open in Google Sheets",
+  gdocInvalidBlock: "Invalid Google file embed (missing document id).",
 
   // ---- Settings: auto-sync (settings-tab.ts) ----
   headingAutoSync: "3. Automatic sync",

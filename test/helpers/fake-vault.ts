@@ -105,6 +105,22 @@ class FakeAdapter {
     this.files.set(path, { content: data, mtime: existing?.mtime ?? 2_000 });
   }
 
+  /** Text read (used for Google Doc stub notes). */
+  async read(path: string): Promise<string> {
+    const e = this.files.get(path);
+    if (!e) throw new Error(`FakeAdapter: keine Datei ${path}`);
+    return new TextDecoder().decode(e.content);
+  }
+
+  /** Text write (used for Google Doc stub notes). */
+  async write(path: string, data: string): Promise<void> {
+    const existing = this.files.get(path);
+    this.files.set(path, {
+      content: new TextEncoder().encode(data).buffer,
+      mtime: existing?.mtime ?? 2_000,
+    });
+  }
+
   async exists(path: string): Promise<boolean> {
     return this.files.has(path);
   }

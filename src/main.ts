@@ -16,6 +16,7 @@ import {
 import { log, setDebugLogging } from "./logger";
 import { initLocale, t } from "./i18n";
 import { isIgnored, parseIgnorePatterns } from "./ignore";
+import { GDOC_BLOCK_LANG, renderGdocBlock } from "./gdoc-embed";
 import { InMemoryRemoteStore, RemoteStore } from "./remote-store";
 import {
   IndexedDbRemoteStore,
@@ -104,6 +105,13 @@ export default class GoogleDriveSyncPlugin extends Plugin {
       id: "login",
       name: t("commandLogin"),
       callback: () => void this.login(),
+    });
+
+    // Renders `gdoc` fenced code blocks (inside .gdoc.md stub notes) as a live,
+    // editable Google editor embed on desktop / an "open externally" button on
+    // mobile. See gdoc-embed.ts.
+    this.registerMarkdownCodeBlockProcessor(GDOC_BLOCK_LANG, (source, el) => {
+      renderGdocBlock(el, source);
     });
 
     // Watch local changes (only relevant when auto-sync is active).

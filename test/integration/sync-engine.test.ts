@@ -883,3 +883,140 @@ describe("SyncEngine.sync — remote store (streamed reconcile)", () => {
     expect(await vault.adapter.exists("dup.md")).toBe(true);
   });
 });
+
+describe("SyncEngine.sync — Google Docs & Sheets (view-only stubs)", () => {
+  const GDOC_MIME = "application/vnd.google-apps.document";
+  const GSHEET_MIME = "application/vnd.google-apps.spreadsheet";
+
+  it("writes a .gdoc.md stub for a Google Doc when syncGoogleDocs is on", async () => {
+    const { engine, vault, drive } = setup({ syncGoogleDocs: true });
+    drive.seed({
+      path: "My Doc",
+      content: "",
+      md5: "",
+      id: "doc1",
+      mimeType: GDOC_MIME,
+    });
+
+    await engine.sync(false);
+
+    expect(await vault.adapter.exists("My Doc.gdoc.md")).toBe(true);
+    const text = await vault.adapter.read("My Doc.gdoc.md");
+    expect(text).toContain("gdocId: doc1");
+    expect(text).toContain("gdocKind: doc");
+    expect(text).toContain("```gdoc");
+  });
+
+  it("writes a .gsheet.md stub for a Google Sheet when syncGoogleDocs is on", async () => {
+    const { engine, vault, drive } = setup({ syncGoogleDocs: true });
+    drive.seed({
+      path: "Budget",
+      content: "",
+      md5: "",
+      id: "sheet1",
+      mimeType: GSHEET_MIME,
+    });
+
+    await engine.sync(false);
+
+    expect(await vault.adapter.exists("Budget.gsheet.md")).toBe(true);
+    const text = await vault.adapter.read("Budget.gsheet.md");
+    expect(text).toContain("gdocId: sheet1");
+    expect(text).toContain("gdocKind: sheet");
+    expect(text).toContain("spreadsheets/d/sheet1/edit");
+  });
+
+  it("does NOT create a stub for an unsupported Apps kind (e.g. Slides)", async () => {
+    const { engine, vault, drive } = setup({ syncGoogleDocs: true });
+    drive.seed({
+      path: "Deck",
+      content: "",
+      md5: "",
+      id: "slide1",
+      mimeType: "application/vnd.google-apps.presentation",
+    });
+
+    await engine.sync(false);
+
+    expect(await vault.adapter.exists("Deck.gdoc.md")).toBe(false);
+    expect(await vault.adapter.exists("Deck.gsheet.md")).toBe(false);
+  });
+
+  it("does NOT create a stub when syncGoogleDocs is off", async () => {
+    const { engine, vault, drive } = setup({ syncGoogleDocs: false });
+    drive.seed({
+      path: "My Doc",
+      content: "",
+      md5: "",
+      id: "doc1",
+      mimeType: GDOC_MIME,
+    });
+
+    await engine.sync(false);
+
+    expect(await vault.adapter.exists("My Doc.gdoc.md")).toBe(false);
+  });
+
+  it("never uploads a stub back to Drive and never deletes it (not synced content)", async () => {
+    // A stub already exists locally; there is NO base entry for it. A normal
+    // local-only file would be uploaded — a stub must not be, and must not be
+    // deleted either (deletion safety by exclusion from the reconciler).
+    const { engine, vault, drive } = setup({ syncGoogleDocs: true });
+    vault.seed(
+      "My Doc.gdoc.md",
+      "---\ngdoc: true\ngdocId: doc1\n---\n"
+    );
+    drive.seed({
+      path: "My Doc",
+      content: "",
+      md5: "",
+      id: "doc1",
+      mimeType: GDOC_MIME,
+    });
+
+    await engine.sync(false);
+
+    // The stub was never uploaded as a Drive file...
+    expect(drive.calls.createFile).toEqual([]);
+    expect(drive.calls.updateFile).toEqual([]);
+    // ...and it still exists locally (not trashed).
+    expect(vault.has("My Doc.gdoc.md")).toBe(true);
+  });
+
+  it("is idempotent: a second run does not rewrite an up-to-date stub", async () => {
+    const { engine, vault, drive } = setup({ syncGoogleDocs: true });
+    drive.seed({
+      path: "My Doc",
+      content: "",
+      md5: "",
+      id: "doc1",
+      mimeType: GDOC_MIME,
+    });
+
+    await engine.sync(false);
+    const first = await vault.adapter.read("My Doc.gdoc.md");
+    await engine.sync(false);
+    const second = await vault.adapter.read("My Doc.gdoc.md");
+
+    expect(second).toBe(first);
+  });
+
+  it("does not clobber a user's real note that happens to sit at the stub path", async () => {
+    const { engine, vault, drive } = setup({ syncGoogleDocs: true });
+    // A user file at the would-be stub path that is NOT our stub.
+    vault.seed("My Doc.gdoc.md", "user content, not a stub");
+    drive.seed({
+      path: "My Doc",
+      content: "",
+      md5: "",
+      id: "doc1",
+      mimeType: GDOC_MIME,
+    });
+
+    await engine.sync(false);
+
+    expect(await vault.adapter.read("My Doc.gdoc.md")).toBe(
+      "user content, not a stub"
+    );
+  });
+});

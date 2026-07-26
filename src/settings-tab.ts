@@ -656,6 +656,16 @@ export class SettingsTab extends PluginSettingTab {
         })
       );
 
+    // --- Google Docs (view-only embed) ---
+    new Setting(body)
+      .setName(t("syncGoogleDocsName"))
+      .setDesc(t("syncGoogleDocsDesc"))
+      .addToggle((c) =>
+        c.setValue(target.syncGoogleDocs).onChange(async (v) => {
+          await this.plugin.updateTarget(id, { syncGoogleDocs: v });
+        })
+      );
+
     // --- Sync tree (per target) ---
     const descSetting = new Setting(body)
       .setName(t("syncTreeName"))

@@ -117,6 +117,14 @@ export const it: Partial<Messages> = {
   neverDeleteRemoteName: "Non eliminare in Google Drive",
   neverDeleteRemoteDesc:
     "Se attivo, un file eliminato localmente NON viene rimosso da Google Drive. Il file resta in Drive e non torna localmente. Tramite “Solo in Drive” qui sotto puoi scaricare di nuovo singoli file localmente. Predefinito: disattivo.",
+  syncGoogleDocsName: "Sincronizza Google Docs e Fogli (sola visualizzazione)",
+  syncGoogleDocsDesc:
+    "Crea una piccola nota per ogni Google Doc e Foglio che incorpora l’editor Google dal vivo (modificabile su desktop; si apre esternamente su mobile). Il file stesso non viene scaricato né mai ricaricato. Predefinito: disattivo.",
+
+  // ---- Incorporamento Google Docs/Fogli ----
+  gdocOpenInDrive: "Apri in Google Docs",
+  gsheetOpenInDrive: "Apri in Fogli Google",
+  gdocInvalidBlock: "Incorporamento file Google non valido (ID documento mancante).",
 
   // ---- Impostazioni: sincronizzazione automatica ----
   headingAutoSync: "3. Sincronizzazione automatica",

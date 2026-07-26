@@ -117,6 +117,14 @@ export const de: Partial<Messages> = {
   neverDeleteRemoteName: "Do not delete in Google Drive",
   neverDeleteRemoteDesc:
     "Wenn aktiv, wird eine lokal gelöschte Datei NICHT aus Google Drive entfernt. Die Datei bleibt in Drive und kommt lokal nicht zurück. Über „Nur in Drive“ unten kannst du einzelne Dateien wieder lokal herunterladen lassen. Standard: aus.",
+  syncGoogleDocsName: "Google Docs & Sheets synchronisieren (nur Ansicht)",
+  syncGoogleDocsDesc:
+    "Erstellt pro Google Doc und Sheet eine kleine Notiz, die den Live-Google-Editor einbettet (auf dem Desktop bearbeitbar; auf dem Handy extern geöffnet). Die Datei selbst wird nicht heruntergeladen und nie zurück hochgeladen. Standard: aus.",
+
+  // ---- Google-Docs/Sheets-Einbettung ----
+  gdocOpenInDrive: "In Google Docs öffnen",
+  gsheetOpenInDrive: "In Google Sheets öffnen",
+  gdocInvalidBlock: "Ungültige Google-Datei-Einbettung (Dokument-ID fehlt).",
 
   // ---- Einstellungen: Auto-Sync ----
   headingAutoSync: "3. Automatischer Sync",

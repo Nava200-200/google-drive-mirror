@@ -25,6 +25,14 @@ import {
 /** Pure-JS MD5 — works on desktop and mobile (no Node `crypto`). */
 import { md5Hex } from "./md5";
 
+import {
+  buildStub,
+  isGoogleFileStub,
+  kindForMime,
+  parseStub,
+  stubPath,
+} from "./gdoc-embed";
+
 /**
  * After this many executed (real) actions the sync state is
  * checkpointed. Protects large runs against interruption, without
@@ -248,6 +256,11 @@ export class SyncEngine {
       this.status.update(t("engineFetchingDrive"), 0);
       let lastCrumbMs = 0;
       let storedFiles = 0;
+      // Native Google Docs discovered during the listing (only collected when
+      // `syncGoogleDocs` is on). Turned into `.gdoc.md` stub notes AFTER the
+      // sync transfers, entirely outside the reconciler. Keyed by Drive id so a
+      // duplicate listing entry can't create two stubs.
+      const docsFound = new Map<string, DriveFile>();
       const listing = await this.drive.listFiles(
         this.active.driveFolderId,
         this.active.driveSharedId || undefined,
@@ -272,7 +285,24 @@ export class SyncEngine {
         // listing never accumulates in memory. A filtered file is never stored,
         // so it can't look "deleted on one side" (deletion safety).
         async (f) => {
-          if (isGoogleAppsFile(f.mimeType)) return;
+          if (isGoogleAppsFile(f.mimeType)) {
+            // Google Docs/Sheets can't be part of the sync (no downloadable
+            // binary), but when the target opts in we record native Docs and
+            // Sheets so a stub note can be written after the run (outside the
+            // reconciler). Honor the same scope filters (system/ignore/exclude)
+            // via the file PATH so an ignored/excluded file gets no stub either.
+            if (this.target.syncGoogleDocs && kindForMime(f.mimeType)) {
+              const docRel = normalizePath(this.drive.pathOf(f));
+              if (
+                !isSystemPath(docRel, this.vault.configDir) &&
+                !this.isIgnored(docRel) &&
+                !this.isExcluded(docRel)
+              ) {
+                docsFound.set(f.id, { ...f });
+              }
+            }
+            return;
+          }
           const path = normalizePath(this.drive.pathOf(f));
           if (isSystemPath(path, this.vault.configDir)) return;
           if (!this.extensionAllowed(path)) return;
@@ -482,6 +512,14 @@ export class SyncEngine {
           continue;
         }
         this.state.set(this.folderEntry(fa.path, remoteFolders.get(fa.path)));
+      }
+
+      // Google Docs view-layer: (re)write `.gdoc.md` stub notes for the Docs
+      // discovered during the listing. Runs AFTER all transfers and outside the
+      // reconciler — a stub is a pointer file, never synced content, so this can
+      // never upload or delete real data.
+      if (this.target.syncGoogleDocs) {
+        await this.writeGdocStubs(docsFound, summary);
       }
 
       this.state.setLastSyncMs(Date.now());
@@ -853,6 +891,10 @@ export class SyncEngine {
 
     for (const file of this.vault.getFiles()) {
       if (!this.inScope(file.path)) continue;
+      // Google file stub notes (`*.gdoc.md` / `*.gsheet.md`) are a view-only
+      // layer, not synced content: never upload them back to Drive and never
+      // treat them as "deleted on one side". Managed only by writeGdocStubs().
+      if (isGoogleFileStub(file.path)) continue;
       if (!this.extensionAllowed(file.path)) continue;
       const rel = this.toRelative(file.path, prefix);
       // Ignore patterns check the SYNC-RELATIVE path (like the Drive side).
@@ -1052,6 +1094,69 @@ export class SyncEngine {
     const abs = this.toAbsolute(relPath);
     await this.ensureParentDir(abs);
     await this.vault.adapter.writeBinary(abs, content);
+  }
+
+  /**
+   * (Re)writes the `.gdoc.md` stub notes for the given Google Docs. This is the
+   * view-only layer: each stub holds only a pointer (the Drive id + a link),
+   * never the document content, and is auto-excluded from the reconciler, so it
+   * is never uploaded or deleted as sync content.
+   *
+   * The stub is placed in the same (sync-relative) folder as the Doc in Drive.
+   * A stub is only written when it does not exist yet or its content actually
+   * changed (e.g. the Doc was renamed), so a steady state produces no vault
+   * event churn. Docs that no longer exist are intentionally NOT deleted here —
+   * removing a view note is left to the user (deletion safety by omission).
+   */
+  private async writeGdocStubs(
+    docs: Map<string, DriveFile>,
+    summary: SyncSummary
+  ): Promise<void> {
+    for (const doc of docs.values()) {
+      try {
+        const kind = kindForMime(doc.mimeType);
+        if (!kind) continue; // not a supported Google file kind
+        const rel = normalizePath(this.drive.pathOf(doc));
+        const slash = rel.lastIndexOf("/");
+        const dir = slash >= 0 ? rel.slice(0, slash) : "";
+        const stubRel = stubPath(dir, doc.name, doc.id, kind);
+        const abs = this.toAbsolute(stubRel);
+        // Exclude a stub that lands in a system/ignored/excluded path (defensive;
+        // the file path was already checked, but the stub name differs).
+        if (
+          isSystemPath(stubRel, this.vault.configDir) ||
+          this.isIgnored(stubRel) ||
+          this.isExcluded(stubRel)
+        ) {
+          continue;
+        }
+        const desired = buildStub({ driveId: doc.id, title: doc.name, kind });
+
+        // Skip the write when an existing stub already points at this Doc with
+        // the same content — avoids needless rewrites (and vault events). If a
+        // DIFFERENT file already occupies the path but is not our stub, leave it
+        // alone (never clobber user content).
+        if (await this.vault.adapter.exists(abs)) {
+          const current = await this.vault.adapter.read(abs);
+          const parsed = parseStub(current);
+          if (!parsed || parsed.driveId !== doc.id) continue; // not our stub
+          if (current === desired) continue; // already up to date
+        }
+
+        await this.ensureParentDir(abs);
+        await this.vault.adapter.write(abs, desired);
+        log.debug(`gdoc stub written: ${stubRel}`);
+      } catch (e) {
+        const detail = t("engineActionError", {
+          type: "gdoc-stub",
+          path: doc.name,
+          error: errMsg(e),
+        });
+        summary.errors.push(detail);
+        this.status.append("error", detail);
+        log.warn("gdoc stub write failed:", detail, e);
+      }
+    }
   }
 
   /**
