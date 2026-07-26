@@ -5,6 +5,8 @@
 Automatic **two-way sync** between your Obsidian vault (whole vault or a single subfolder) and a Google Drive folder. You can edit, add, or delete files in Obsidian **or** directly in Google Drive — both sides are reconciled.
 
 - ✅ Manual sync (ribbon icon + command) **and** automatic sync (upload shortly after a local change + interval polling for Drive)
+- 📝 **Google Workspace files, live inside Obsidian:** open a Doc, Sheet, Slides or Drawing as a note and **view — and edit on desktop — the real Google editor embedded right in the pane**. View-only integration: the file is never downloaded or uploaded, so nothing can be lost
+- ⚙️ **Sync plugin settings across devices:** keep this plugin's own settings — and optionally **every other installed plugin's settings** — in sync between your devices, **passphrase-encrypted** (the passphrase never leaves your device). Never deletes; conflicts ask which side to keep (see [Sync plugin settings across devices](#sync-plugin-settings-across-devices-optional))
 - ✅ **Whole vault** or a specific **subfolder** — toggleable
 - ✅ **Recursive:** subfolders are mirrored; even empty folders are synced
 - ✅ Conflict strategy **"newer wins"** (by timestamp); an edit always beats a deletion (no data loss)
@@ -12,7 +14,6 @@ Automatic **two-way sync** between your Obsidian vault (whole vault or a single 
 - ✅ Optional **"Do not delete in Google Drive"** mode: local deletions are never propagated to Drive
 - ✅ **Sync tree** in the settings: browse all synced folders and files; a checkbox per entry shows whether it exists locally, and files kept only in Drive can be restored locally per entry (auto-refreshes after each sync, plus a manual refresh button)
 - ✅ All file types (Markdown, images, PDFs …), optionally narrowed by a **file-extension filter**
-- ✅ Optional **Google Docs & Sheets embeds:** view (and edit on desktop) live Google Docs/Sheets right inside a note — view-only, never downloaded or uploaded
 - ✅ **Shared Drives** (Team Drives) are supported — auto-detected when you pick the folder
 - ✅ **Live status bar** + persistent **sync log** (viewable in the log window)
 - 📱 Works on **desktop and mobile**. You sign in on desktop, then copy the sign-in token to mobile (mobile can't run the sign-in redirect flow — see [Mobile setup](#mobile-setup-sign-in-on-desktop-copy-the-token))
@@ -160,16 +161,43 @@ Below the settings you'll find a **sync tree** showing all synced folders and fi
 
 The tree **auto-refreshes after each sync**, and there's a **refresh button** next to the heading for a manual update. The heading also shows how many entries are currently only in Drive.
 
-### Google Docs & Sheets (view-only, optional)
+### Google Workspace files (view-only, optional)
 
-Native Google Docs and Sheets can't be synced as files — they have no downloadable binary, only the live cloud document. With the per-target **"Sync Google Docs & Sheets"** toggle enabled, the plugin instead creates a small **stub note** in your vault for each one — `<name>.gdoc.md` for Docs, `<name>.gsheet.md` for Sheets — that **embeds the live Google editor**:
+Native Google Workspace files can't be synced as files — they have no downloadable binary, only the live cloud document. With the per-target **"Sync Google Workspace files"** toggle enabled, the plugin instead creates a small **stub note** in your vault for each one that **embeds the live Google editor**. Supported types and their stub suffixes:
 
-- **Desktop:** the note shows the real, fully **editable** Google editor inline (it's the actual Google Docs/Sheets page — your edits save straight to Google, no conversion).
-- **Mobile:** shows an **"Open in Google Docs / Sheets"** button instead (mobile can't embed the editor).
+| Type | Stub file |
+|------|-----------|
+| Google Docs | `<name>.gdoc.md` |
+| Google Sheets | `<name>.gsheet.md` |
+| Google Slides | `<name>.gslides.md` |
+| Google Drawings | `<name>.gdraw.md` |
 
-These stub notes are pointers, not content: **the document is never downloaded and never uploaded back**, and the stubs are **excluded from the sync** entirely (they're never uploaded to Drive and never treated as deletions). Deleting a stub note doesn't touch the Google document; deleting the Google document doesn't auto-remove the stub. Default: **off**.
+(Other Google types — Forms, Sites, etc. — are left as-is.)
+
+- **Desktop:** the note shows the real, fully **editable** Google editor inline (it's the actual Google page — your edits save straight to Google, no conversion).
+- **Mobile:** shows an **"Open in Google …"** button instead (mobile can't embed the editor).
+
+These stub notes are pointers, not content: **the file is never downloaded and never uploaded back**, and the stubs are **excluded from the sync** entirely (they're never uploaded to Drive and never treated as deletions). Deleting a stub note doesn't touch the Google file; deleting the Google file doesn't auto-remove the stub. Default: **off**.
 
 > Tip: the embed fills the full note pane width. Sign-in uses your browser's Google session inside the embed.
+
+### Sync plugin settings across devices (optional)
+
+A separate feature (its own tab in the settings) that keeps **this plugin's own settings** — your sync targets, filters, and options — in sync across your devices, so a second desktop or a phone inherits the same setup. It is **not** part of the folder sync above and never deletes anything.
+
+How it works:
+
+- **Its own Drive folder.** You pick a dedicated Drive folder; inside it the plugin mirrors the `.obsidian` structure (e.g. `.obsidian/plugins/google-drive-mirror/data.json`). Keep it separate from your note folders — the plugin's normal note sync automatically ignores anything under `.obsidian`, so the two never collide.
+- **A passphrase you set per device.** Everything uploaded is **encrypted with a passphrase** that you enter on each device and that is **never uploaded**. Enter the *same* passphrase on every device. The passphrase is stored locally (obfuscated) so you don't have to re-type it every session and so it can run unattended — see the note below on what that does and doesn't protect.
+- **Whole-file encryption.** Each settings file is encrypted as a single opaque blob, so credentials (and any secrets) are unreadable in Drive.
+- **Conflicts ask.** If a settings file changed on both devices since the last sync, you're prompted to keep this device's version or Drive's. Otherwise the newer one wins. Nothing is ever deleted — a settings file present on only one device is only ever copied to the other.
+- **Live-applies for this plugin.** After a download, this plugin's own settings take effect immediately (no restart).
+
+**Also sync other plugins' settings (optional, off by default).** A second toggle additionally syncs the `data.json` of **every other installed plugin** (only for plugins already installed on both devices — it does not install or enable plugins). Each file is fully passphrase-encrypted, so any secrets other plugins store stay unreadable in Drive. Note: other plugins usually need an **Obsidian reload** to pick up downloaded settings.
+
+> ⚠️ **On the stored passphrase:** it is stored **obfuscated and bound to the device**, not truly encrypted at rest — anyone with access to your local files could recover it (but they could already read your vault and credentials in that case). What it does guarantee: the passphrase **never reaches Drive**, so a leak of just the Drive folder cannot decrypt your settings. A settings file copied to another device won't carry a usable passphrase — you re-enter it there.
+
+Trigger it manually with the command **"Sync plugin settings now"** or the button in the settings tab. It has its own live status line and log, just like the folder sync.
 
 ### 4. Get started
 
