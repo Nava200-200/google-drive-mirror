@@ -316,8 +316,16 @@ export const de: Partial<Messages> = {
     "Hält die eigenen Einstellungen dieses Plugins (Sync-Ziele, Filter, Optionen) über deine Geräte hinweg synchron. Zugangsdaten werden mit einer Passphrase verschlüsselt, die dieses Gerät nie verlässt.",
   configSyncOtherPluginsName: "Auch Einstellungen anderer Plugins synchronisieren",
   configSyncOtherPluginsDesc:
-    "Synchronisiert zusätzlich die data.json JEDES anderen installierten Plugins (nur für Plugins, die auf beiden Geräten installiert sind). Jede Datei wird vollständig mit deiner Passphrase verschlüsselt, sodass darin gespeicherte Geheimnisse in Drive unlesbar bleiben. Andere Plugins benötigen meist einen Obsidian-Neustart, damit die Änderungen wirken.",
-  configSyncChanged: "Config-Sync: {up} hochgeladen, {down} heruntergeladen.",
+    "Synchronisiert zusätzlich die data.json der unten ausgewählten anderen Plugins (nur für Plugins, die auf beiden Geräten installiert sind). Jede Datei wird vollständig mit deiner Passphrase verschlüsselt, sodass darin gespeicherte Geheimnisse in Drive unlesbar bleiben. Andere Plugins benötigen meist einen Obsidian-Neustart, damit die Änderungen wirken.",
+  configSyncPluginsListName: "Zu synchronisierende Plugins",
+  configSyncPluginsListDesc:
+    "Wähle, welche installierten Plugins synchronisiert werden. Das Abwählen eines bereits synchronisierten Plugins entfernt seine Kopie aus Drive (in den Papierkorb) — für alle Geräte.",
+  configSyncPluginsEmpty: "Keine anderen Plugins installiert.",
+  configSyncPropsName: "Zu synchronisierende Eigenschaften",
+  configSyncPropsDesc:
+    "Wähle, welche Eigenschaften der Einstellungen dieses Plugins synchronisiert werden. Nicht ausgewählte Eigenschaften bleiben nur auf diesem Gerät (z. B. pro Ziel ausgeschlossene Ordner, die gerätespezifisch sind).",
+  configSyncChanged:
+    "Config-Sync: {up} hochgeladen, {down} heruntergeladen, {del} aus Drive entfernt.",
   configSyncFolderName: "Konfigurations-Drive-Ordner",
   configSyncFolderDesc:
     "Eigener Google-Drive-Ordner für die Einstellungsdatei. Halte ihn getrennt von deinen Notizordnern.",

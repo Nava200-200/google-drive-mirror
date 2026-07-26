@@ -321,8 +321,16 @@ export const it: Partial<Messages> = {
     "Mantiene sincronizzate tra i tuoi dispositivi le impostazioni di questo plugin (destinazioni di sincronizzazione, filtri, opzioni). Le credenziali sono cifrate con una passphrase che non lascia mai questo dispositivo.",
   configSyncOtherPluginsName: "Sincronizza anche le impostazioni di altri plugin",
   configSyncOtherPluginsDesc:
-    "Sincronizza anche il data.json di OGNI altro plugin installato (solo per i plugin già installati su entrambi i dispositivi). Ogni file è cifrato completamente con la tua passphrase, così eventuali segreti restano illeggibili su Drive. Gli altri plugin di solito richiedono un riavvio di Obsidian per applicare le modifiche.",
-  configSyncChanged: "Sync impostazioni: {up} caricati, {down} scaricati.",
+    "Sincronizza anche il data.json degli altri plugin selezionati qui sotto (solo per i plugin già installati su entrambi i dispositivi). Ogni file è cifrato completamente con la tua passphrase, così eventuali segreti restano illeggibili su Drive. Gli altri plugin di solito richiedono un riavvio di Obsidian per applicare le modifiche.",
+  configSyncPluginsListName: "Plugin da sincronizzare",
+  configSyncPluginsListDesc:
+    "Scegli quali plugin installati sincronizzare. Deselezionare un plugin già sincronizzato rimuove la sua copia da Drive (spostata nel cestino) per tutti i dispositivi.",
+  configSyncPluginsEmpty: "Nessun altro plugin installato.",
+  configSyncPropsName: "Proprietà da sincronizzare",
+  configSyncPropsDesc:
+    "Scegli quali proprietà delle impostazioni di questo plugin sincronizzare. Le proprietà deselezionate restano solo su questo dispositivo (es. le cartelle escluse per destinazione, che sono specifiche del dispositivo).",
+  configSyncChanged:
+    "Sync impostazioni: {up} caricati, {down} scaricati, {del} rimossi da Drive.",
   configSyncFolderName: "Cartella Drive di configurazione",
   configSyncFolderDesc:
     "Cartella Google Drive dedicata al file delle impostazioni. Tienila separata dalle cartelle delle note.",

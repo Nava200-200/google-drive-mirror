@@ -44,6 +44,31 @@
   font-weight: var(--font-medium);
 }
 
+/* Config-sync "properties to sync" tree + per-plugin list. */
+.gds-cfg-tree {
+  margin: 0.25rem 0 0.75rem;
+  font-size: var(--font-ui-small);
+}
+.gds-cfg-node > summary {
+  cursor: pointer;
+  padding: 0.15rem 0;
+}
+.gds-cfg-children,
+.gds-cfg-tree .gds-cfg-node {
+  margin-left: 1.1rem;
+}
+.gds-cfg-leaf {
+  padding: 0.15rem 0 0.15rem 1.1rem;
+}
+.gds-cfg-leaf input,
+.gds-cfg-node > summary input {
+  vertical-align: middle;
+  margin-right: 0.25rem;
+}
+.gds-cfg-plugins {
+  margin: 0.25rem 0 0.75rem;
+}
+
 /* Statusleisten-Eintrag klickbar. */
 .gds-statusbar {
   cursor: pointer;

@@ -325,8 +325,16 @@ export const fr: Partial<Messages> = {
     "Garde les réglages de ce plugin (cibles de synchronisation, filtres, options) synchronisés entre vos appareils. Les identifiants sont chiffrés avec une phrase secrète qui ne quitte jamais cet appareil.",
   configSyncOtherPluginsName: "Synchroniser aussi les réglages des autres plugins",
   configSyncOtherPluginsDesc:
-    "Synchronise également le data.json de CHAQUE autre plugin installé (uniquement pour les plugins déjà installés sur les deux appareils). Chaque fichier est entièrement chiffré avec votre phrase secrète, afin que les secrets qu'ils contiennent restent illisibles sur Drive. Les autres plugins nécessitent généralement un redémarrage d'Obsidian pour appliquer les changements.",
-  configSyncChanged: "Sync des réglages : {up} envoyé(s), {down} téléchargé(s).",
+    "Synchronise également le data.json des autres plugins sélectionnés ci-dessous (uniquement pour les plugins déjà installés sur les deux appareils). Chaque fichier est entièrement chiffré avec votre phrase secrète, afin que les secrets qu'ils contiennent restent illisibles sur Drive. Les autres plugins nécessitent généralement un redémarrage d'Obsidian pour appliquer les changements.",
+  configSyncPluginsListName: "Plugins à synchroniser",
+  configSyncPluginsListDesc:
+    "Choisissez quels plugins installés synchroniser. Décocher un plugin déjà synchronisé supprime sa copie de Drive (mise à la corbeille) pour tous les appareils.",
+  configSyncPluginsEmpty: "Aucun autre plugin installé.",
+  configSyncPropsName: "Propriétés à synchroniser",
+  configSyncPropsDesc:
+    "Choisissez quelles propriétés des réglages de ce plugin synchroniser. Les propriétés décochées restent uniquement sur cet appareil (p. ex. les dossiers exclus par cible, qui sont spécifiques à l'appareil).",
+  configSyncChanged:
+    "Sync des réglages : {up} envoyé(s), {down} téléchargé(s), {del} supprimé(s) de Drive.",
   configSyncFolderName: "Dossier Drive de configuration",
   configSyncFolderDesc:
     "Dossier Google Drive dédié au fichier de réglages. Gardez-le séparé de vos dossiers de notes.",

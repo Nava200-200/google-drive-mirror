@@ -312,8 +312,16 @@ export const en = {
     "Keep this plugin's own settings (sync targets, filters, options) in sync across your devices. Credentials are encrypted with a passphrase that never leaves this device.",
   configSyncOtherPluginsName: "Also sync other plugins' settings",
   configSyncOtherPluginsDesc:
-    "Also sync the data.json of every OTHER installed plugin (only for plugins already installed on both devices). Each file is fully encrypted with your passphrase, so any secrets they store stay unreadable in Drive. Other plugins usually need an Obsidian reload to apply.",
-  configSyncChanged: "Config sync: {up} uploaded, {down} downloaded.",
+    "Also sync the data.json of OTHER installed plugins you select below (only for plugins already installed on both devices). Each file is fully encrypted with your passphrase, so any secrets they store stay unreadable in Drive. Other plugins usually need an Obsidian reload to apply.",
+  configSyncPluginsListName: "Plugins to sync",
+  configSyncPluginsListDesc:
+    "Pick which installed plugins' settings to sync. Unticking a plugin that was already synced removes its copy from Drive (moved to trash) for all devices.",
+  configSyncPluginsEmpty: "No other plugins installed.",
+  configSyncPropsName: "Properties to sync",
+  configSyncPropsDesc:
+    "Choose which properties of this plugin's settings to sync. Unticked properties stay on this device only (e.g. per-target excluded folders, which are device-specific).",
+  configSyncChanged:
+    "Config sync: {up} uploaded, {down} downloaded, {del} removed from Drive.",
   configSyncFolderName: "Config Drive folder",
   configSyncFolderDesc:
     "Dedicated Google Drive folder for the settings file. Keep it separate from your note folders.",

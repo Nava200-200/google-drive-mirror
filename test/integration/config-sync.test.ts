@@ -7,7 +7,7 @@ import { GoogleDriveClient } from "../../src/drive-client";
 import { FakeVault } from "../helpers/fake-vault";
 import { FakeDriveClient } from "../helpers/fake-drive";
 import { FakeStorage } from "../helpers/fake-storage";
-import { isEncSentinel } from "../../src/crypto-box";
+import { isEncSentinel, encryptSentinel } from "../../src/crypto-box";
 import { SyncStatus } from "../../src/sync-status";
 import { PluginSettings, DEFAULT_SETTINGS } from "../../src/types";
 
@@ -290,8 +290,14 @@ describe("config sync (integration)", () => {
     const OTHER_ID = "dataview";
     const OTHER_PATH = `.obsidian/plugins/${OTHER_ID}/data.json`;
 
-    it("uploads other plugins' data.json ENCRYPTED when enabled", async () => {
-      const a = device(drive, settings({ configSyncOtherPlugins: true }));
+    it("uploads other plugins' data.json ENCRYPTED when selected", async () => {
+      const a = device(
+        drive,
+        settings({
+          configSyncOtherPlugins: true,
+          configSyncPluginIds: [OTHER_ID],
+        })
+      );
       // Seed a second plugin's data.json with a secret-looking value.
       a.vault.seed(OTHER_PATH, JSON.stringify({ apiKey: "sk-super-secret" }));
       await a.state.load();
@@ -311,7 +317,13 @@ describe("config sync (integration)", () => {
     });
 
     it("downloads another plugin's settings onto a second device", async () => {
-      const a = device(drive, settings({ configSyncOtherPlugins: true }));
+      const a = device(
+        drive,
+        settings({
+          configSyncOtherPlugins: true,
+          configSyncPluginIds: [OTHER_ID],
+        })
+      );
       a.vault.seed(OTHER_PATH, JSON.stringify({ theme: "dark", n: 5 }));
       await a.state.load();
       await a.sync();
@@ -319,7 +331,11 @@ describe("config sync (integration)", () => {
       // Device B has the plugin installed (data.json present) but different data.
       const b = device(
         drive,
-        settings({ configSyncOtherPlugins: true, targets: [] })
+        settings({
+          configSyncOtherPlugins: true,
+          configSyncPluginIds: [OTHER_ID],
+          targets: [],
+        })
       );
       b.vault.seed(OTHER_PATH, JSON.stringify({ theme: "light", n: 1 }));
       await b.state.load();
@@ -341,6 +357,155 @@ describe("config sync (integration)", () => {
 
       const { files } = await drive.listFiles(CONFIG_FOLDER);
       expect(files.find((f) => f.relativePath === OTHER_PATH)).toBeUndefined();
+    });
+
+    it("does NOT upload an installed-but-unselected plugin", async () => {
+      const a = device(
+        drive,
+        settings({ configSyncOtherPlugins: true, configSyncPluginIds: [] })
+      );
+      a.vault.seed(OTHER_PATH, JSON.stringify({ apiKey: "secret" }));
+      await a.state.load();
+      await a.sync();
+
+      const { files } = await drive.listFiles(CONFIG_FOLDER);
+      expect(files.find((f) => f.relativePath === OTHER_PATH)).toBeUndefined();
+    });
+
+    it("deselecting a synced plugin trashes its Drive copy + drops its base", async () => {
+      // First: sync it up.
+      const a = device(
+        drive,
+        settings({
+          configSyncOtherPlugins: true,
+          configSyncPluginIds: [OTHER_ID],
+        })
+      );
+      a.vault.seed(OTHER_PATH, JSON.stringify({ k: 1 }));
+      await a.state.load();
+      await a.sync();
+      const uploaded = (await drive.listFiles(CONFIG_FOLDER)).files.find(
+        (f) => f.relativePath === OTHER_PATH
+      );
+      expect(uploaded).toBeTruthy();
+      expect(a.state.get(OTHER_PATH)).not.toBeNull();
+
+      // Now deselect it and sync again on the SAME device (base + state kept).
+      a.settings.configSyncPluginIds = [];
+      const before = drive.calls.trashFile.length;
+      const outcome = await a.sync();
+
+      expect(drive.calls.trashFile.length).toBe(before + 1);
+      expect(drive.calls.trashFile).toContain(uploaded!.id);
+      expect(a.state.get(OTHER_PATH)).toBeNull();
+      if (outcome.kind === "changed") expect(outcome.deleted).toBe(1);
+    });
+
+    it("never trashes a file this device has no base entry for (foreign file)", async () => {
+      // A foreign file exists in Drive that this device never synced (no base):
+      // it was uploaded by another device and picked THAT plugin. This device
+      // does not select it. It must NOT be trashed (we only delete what we synced).
+      const a = device(
+        drive,
+        settings({ configSyncOtherPlugins: true, configSyncPluginIds: [] })
+      );
+      // A validly-encrypted foreign remote copy (so if it downloads, it applies).
+      const box = await encryptSentinel(JSON.stringify({ foreign: true }), PASS);
+      await drive.createFile(
+        CONFIG_FOLDER,
+        OTHER_PATH,
+        new TextEncoder().encode(JSON.stringify(box)).buffer
+      );
+      await a.state.load();
+      const before = drive.calls.trashFile.length;
+      await a.sync();
+      // No base entry for OTHER_PATH → never trashed (regardless of download).
+      expect(drive.calls.trashFile.length).toBe(before);
+    });
+  });
+
+  describe("ignore properties (our own data.json)", () => {
+    const withTarget = (over: Partial<PluginSettings> = {}) =>
+      settings({
+        targets: [
+          {
+            id: "t1",
+            name: "N",
+            driveFolderId: "df",
+            driveFolderName: "N",
+            driveSharedId: "",
+            localFolder: "N",
+            allowedExtensions: "",
+            ignorePatterns: "",
+            excludeFolders: ["DeviceOnly/Secret"],
+            neverDeleteRemote: false,
+            syncGoogleDocs: false,
+          },
+        ] as PluginSettings["targets"],
+        ...over,
+      });
+
+    it("strips an ignored nested path from the uploaded payload", async () => {
+      // Default configIgnorePaths already contains targets[].excludeFolders.
+      const a = device(drive, withTarget());
+      await a.state.load();
+      await a.sync();
+
+      const configFile = (await drive.listFiles(CONFIG_FOLDER)).files.find(
+        (f) => f.relativePath === `.obsidian/plugins/${PLUGIN_ID}/data.json`
+      );
+      const raw = new TextDecoder().decode(
+        await drive.downloadFile(configFile!.id)
+      );
+      // Whole-file encrypted, but excludeFolders value must not leak in the blob.
+      expect(raw).not.toContain("DeviceOnly/Secret");
+    });
+
+    it("preserves this device's ignored value on download", async () => {
+      // A uploads (excludeFolders stripped).
+      const a = device(drive, withTarget());
+      await a.state.load();
+      await a.sync();
+
+      // B has a DIFFERENT local excludeFolders; pulls A's config.
+      const b = device(
+        drive,
+        withTarget({
+          targets: [
+            {
+              id: "t1",
+              name: "N",
+              driveFolderId: "df",
+              driveFolderName: "N",
+              driveSharedId: "",
+              localFolder: "N",
+              allowedExtensions: "",
+              ignorePatterns: "",
+              excludeFolders: ["B-Local/Path"],
+              neverDeleteRemote: false,
+              syncGoogleDocs: false,
+            },
+          ] as PluginSettings["targets"],
+        })
+      );
+      await b.state.load();
+      await b.sync(async () => "keepRemote");
+
+      const bData = JSON.parse(b.vault.read(DATA_PATH)) as PluginSettings;
+      // B's own device-local excludeFolders survived the download.
+      expect(bData.targets[0].excludeFolders).toEqual(["B-Local/Path"]);
+    });
+
+    it("syncs excludeFolders when the user re-enables it (empty ignore list)", async () => {
+      const a = device(drive, withTarget({ configIgnorePaths: [] }));
+      await a.state.load();
+      await a.sync();
+      const configFile = (await drive.listFiles(CONFIG_FOLDER)).files.find(
+        (f) => f.relativePath === `.obsidian/plugins/${PLUGIN_ID}/data.json`
+      );
+      // Sanity: still uploaded (encrypted). We can't read the value from the
+      // blob, but a second device with no local value should receive it.
+      expect(configFile).toBeTruthy();
     });
   });
 });

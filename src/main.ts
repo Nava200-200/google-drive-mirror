@@ -471,7 +471,9 @@ export default class GoogleDriveSyncPlugin extends Plugin {
   /**
    * Manual config sync: uploads/downloads THIS plugin's own settings so devices
    * share the same targets/options. Separate from `runSync` (own `configRunning`
-   * flag) — the two never block each other. NEVER deletes.
+   * flag) — the two never block each other. The only deletion it performs is
+   * trashing the Drive copy of a plugin the user DESELECTED (scoped to files
+   * this device previously synced); it never deletes local files.
    */
   async runConfigSync(showNotice: boolean): Promise<void> {
     if (this.configRunning) {
@@ -521,6 +523,7 @@ export default class GoogleDriveSyncPlugin extends Plugin {
             t("configSyncChanged", {
               up: outcome.uploaded,
               down: outcome.downloaded,
+              del: outcome.deleted,
             })
           );
           break;
@@ -1037,6 +1040,9 @@ function stripLegacyFields(obj: Record<string, unknown>): void {
     "neverDeleteRemote",
     "syncState",
     "lastSyncMs",
+    // Removed feature (keep-device-awake / Screen Wake Lock, reverted in 0.1.28).
+    // Strip it so a lingering value from 0.1.24–0.1.27 doesn't sit in data.json.
+    "preventSleepDuringSync",
   ]) {
     delete obj[key];
   }

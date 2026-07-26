@@ -20,6 +20,11 @@ import {
 } from "./crypto-box";
 import { md5Hex } from "./md5";
 import { PluginSettings, CONFIG_SYNC_DEVICE_LOCAL_KEYS } from "./types";
+import {
+  deleteAtPath,
+  getAtPath,
+  setAtPath,
+} from "./config-paths";
 import { log } from "./logger";
 import { t } from "./i18n";
 
@@ -49,7 +54,13 @@ export type ConfigSyncOutcome =
   | { kind: "noop" }
   | { kind: "uploaded" }
   | { kind: "downloaded" }
-  | { kind: "changed"; uploaded: number; downloaded: number } // mixed multi-file
+  // mixed multi-file (any of upload/download/delete happened)
+  | {
+      kind: "changed";
+      uploaded: number;
+      downloaded: number;
+      deleted: number;
+    }
   | { kind: "conflict"; localMtime: number; remoteMtime: number }
   // `mismatch` marks the specific "stored passphrase no longer matches the
   // folder's encrypted data" case, which the caller notifies about even during
@@ -157,6 +168,23 @@ export class ConfigSyncEngine {
     return `${this.vault.configDir}/plugins`;
   }
 
+  /**
+   * Reads and parses THIS plugin's own `data.json` (for the settings UI's
+   * "properties to sync" tree). Returns `{}` if missing/unreadable.
+   */
+  async readOwnData(): Promise<Record<string, unknown>> {
+    try {
+      const p = this.ownAdapterPath();
+      if (!(await this.vault.adapter.exists(p))) return {};
+      return JSON.parse(await this.vault.adapter.read(p)) as Record<
+        string,
+        unknown
+      >;
+    } catch {
+      return {};
+    }
+  }
+
   private ownAdapterPath(): string {
     return `${this.pluginsDir()}/${this.pluginId}/${DATA_FILE}`;
   }
@@ -179,7 +207,10 @@ export class ConfigSyncEngine {
 
     if (!this.getSettings().configSyncOtherPlugins) return files;
 
-    // Enumerate plugin folders and include each existing data.json (except ours).
+    // Only the plugins the user opted into (allowlist). Empty = none.
+    const allow = new Set(this.getSettings().configSyncPluginIds);
+
+    // Enumerate plugin folders and include each opted-in data.json (except ours).
     try {
       const dir = this.pluginsDir();
       if (!(await this.vault.adapter.exists(dir))) return files;
@@ -187,6 +218,7 @@ export class ConfigSyncEngine {
       for (const folderPath of listing.folders) {
         const id = folderPath.split("/").pop();
         if (!id || id === this.pluginId) continue;
+        if (!allow.has(id)) continue; // not selected → skip
         const adapterPath = `${dir}/${id}/${DATA_FILE}`;
         if (await this.vault.adapter.exists(adapterPath)) {
           files.push({
@@ -200,6 +232,41 @@ export class ConfigSyncEngine {
       log.warn("Config sync: cannot enumerate plugin folders:", e);
     }
     return files;
+  }
+
+  /**
+   * Lists installed OTHER plugins with a display name (from their manifest.json,
+   * falling back to the folder id). Public API only — no `app.plugins`. Used by
+   * the settings UI to render the per-plugin checkboxes.
+   */
+  async listInstalledPlugins(): Promise<{ id: string; name: string }[]> {
+    const out: { id: string; name: string }[] = [];
+    try {
+      const dir = this.pluginsDir();
+      if (!(await this.vault.adapter.exists(dir))) return out;
+      const listing = await this.vault.adapter.list(dir);
+      for (const folderPath of listing.folders) {
+        const id = folderPath.split("/").pop();
+        if (!id || id === this.pluginId) continue;
+        let name = id;
+        try {
+          const manifestPath = `${dir}/${id}/manifest.json`;
+          if (await this.vault.adapter.exists(manifestPath)) {
+            const m = JSON.parse(
+              await this.vault.adapter.read(manifestPath)
+            ) as { name?: string };
+            if (m.name) name = m.name;
+          }
+        } catch {
+          // Unreadable manifest → fall back to the folder id.
+        }
+        out.push({ id, name });
+      }
+    } catch (e) {
+      log.warn("Config sync: cannot list installed plugins:", e);
+    }
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    return out;
   }
 
   /**
@@ -230,10 +297,15 @@ export class ConfigSyncEngine {
       return null;
     }
 
-    // Only OUR file has device-local keys to strip; other plugins' files sync
-    // whole (we can't know their device-specific fields).
+    // Only OUR file has fields to strip; other plugins' files sync whole (we
+    // can't know their device-specific fields).
     if (file.isOwn) {
+      // 1) Device-local top-level keys (always stripped).
       for (const key of CONFIG_SYNC_DEVICE_LOCAL_KEYS) delete parsed[key];
+      // 2) User-chosen ignore paths (may be nested, e.g. targets[].excludeFolders).
+      for (const path of this.getSettings().configIgnorePaths) {
+        deleteAtPath(parsed, path);
+      }
     }
 
     const plaintext = stableStringify(parsed);
@@ -286,7 +358,7 @@ export class ConfigSyncEngine {
     }
 
     if (file.isOwn) {
-      // Preserve this device's device-local keys from the CURRENT file.
+      // Preserve this device's local values from the CURRENT file.
       let current: Record<string, unknown> = {};
       try {
         if (await this.vault.adapter.exists(file.adapterPath)) {
@@ -295,10 +367,18 @@ export class ConfigSyncEngine {
           ) as Record<string, unknown>;
         }
       } catch {
-        // Missing/corrupt local file → no device-local keys to preserve.
+        // Missing/corrupt local file → nothing to preserve.
       }
+      // 1) Device-local top-level keys (folder pointer, passphrase, …).
       for (const key of CONFIG_SYNC_DEVICE_LOCAL_KEYS) {
         if (key in current) incoming[key] = current[key];
+      }
+      // 2) Ignored paths: the incoming payload never carried them (stripped on
+      //    upload), so overlay this device's local values so a download doesn't
+      //    blank them out (e.g. targets[].excludeFolders).
+      for (const path of this.getSettings().configIgnorePaths) {
+        const localVal = getAtPath(current, path);
+        if (localVal !== undefined) setAtPath(incoming, path, localVal);
       }
     }
 
@@ -388,6 +468,7 @@ export class ConfigSyncEngine {
           t("configSyncChanged", {
             up: outcome.uploaded,
             down: outcome.downloaded,
+            del: outcome.deleted,
           })
         );
         break;
@@ -448,7 +529,35 @@ export class ConfigSyncEngine {
 
     let uploaded = 0;
     let downloaded = 0;
+    let deleted = 0;
     let ownDownloaded = false;
+
+    // --- Exclusion handling (the ONE place config sync deletes) --------------
+    // A path we PREVIOUSLY synced (has a base entry) but is no longer selected
+    // locally (absent from `localByPath` — the allowlist / toggle filtered it)
+    // was deselected. Trash its Drive copy (scoped to files WE synced), drop its
+    // base, and remove it from the run so it isn't re-downloaded. A path with NO
+    // base entry is never touched (never delete a file this device didn't put
+    // there — a foreign file, or one genuinely new from another device that
+    // should download instead). Our own file is always in localByPath, so it is
+    // never treated as excluded.
+    for (const rel of [...relPaths]) {
+      if (localByPath.has(rel)) continue; // still selected → normal handling
+      const base = this.state.get(rel);
+      if (!base) continue; // never synced by us → leave alone (may download)
+      // Deselected: trash the remote copy if present, drop the base, skip it.
+      const remote = remoteMap.get(rel);
+      if (remote) {
+        try {
+          await this.drive.trashFile(remote.driveId);
+          deleted++;
+        } catch (e) {
+          log.warn(`Config sync: could not trash excluded ${rel}:`, e);
+        }
+      }
+      this.state.delete(rel);
+      relPaths.delete(rel);
+    }
     // Track a cancelled conflict + its mtimes, so a run where the ONLY thing
     // that happened was a cancelled conflict reports "conflict" (the caller
     // shows no notice) rather than a misleading "noop".
@@ -546,8 +655,8 @@ export class ConfigSyncEngine {
     // Applying OUR OWN downloaded settings needs a live reload (targets/options).
     if (ownDownloaded) await this.onDownloaded();
 
-    if (uploaded === 0 && downloaded === 0) {
-      // Nothing transferred. If a conflict was cancelled, report it (the caller
+    if (uploaded === 0 && downloaded === 0 && deleted === 0) {
+      // Nothing changed. If a conflict was cancelled, report it (the caller
       // stays silent); otherwise everything was already in sync.
       if (cancelledConflict) {
         return {
@@ -558,9 +667,14 @@ export class ConfigSyncEngine {
       }
       return { kind: "noop" };
     }
-    if (downloaded === 0 && uploaded === 1) return { kind: "uploaded" };
-    if (uploaded === 0 && downloaded === 1) return { kind: "downloaded" };
-    return { kind: "changed", uploaded, downloaded };
+    // Single-file shortcuts only when nothing else happened.
+    if (deleted === 0 && downloaded === 0 && uploaded === 1) {
+      return { kind: "uploaded" };
+    }
+    if (deleted === 0 && uploaded === 0 && downloaded === 1) {
+      return { kind: "downloaded" };
+    }
+    return { kind: "changed", uploaded, downloaded, deleted };
   }
 
   /** A LocalConfigFile descriptor for a remote-only path (for download+apply). */

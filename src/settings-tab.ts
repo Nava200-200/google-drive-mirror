@@ -13,6 +13,8 @@ import { DriveFolderSuggest, LocalFolderSuggest } from "./suggesters";
 import { log, setDebugLogging } from "./logger";
 import { t } from "./i18n";
 import { isFilteredByTargetSettings } from "./ignore";
+import { discoverPaths } from "./config-paths";
+import { CONFIG_SYNC_DEVICE_LOCAL_KEYS } from "./types";
 import type { PluginSettings, SyncStateEntry, SyncTarget } from "./types";
 import type { SyncStatus } from "./sync-status";
 
@@ -455,6 +457,9 @@ export class SettingsTab extends PluginSettingTab {
     // The folder / passphrase / sync controls only matter when enabled.
     if (!s.configSyncEnabled) return;
 
+    // Properties of OUR data.json to sync (collapsible checkbox tree).
+    this.renderConfigPropsTree(containerEl, s);
+
     // Also sync OTHER plugins' settings (whole-file encrypted).
     new Setting(containerEl)
       .setName(t("configSyncOtherPluginsName"))
@@ -463,8 +468,14 @@ export class SettingsTab extends PluginSettingTab {
         c.setValue(s.configSyncOtherPlugins).onChange(async (v) => {
           s.configSyncOtherPlugins = v;
           await this.plugin.saveSettings();
+          this.display(); // show/hide the per-plugin list
         })
       );
+
+    // Per-plugin selection (only when the toggle is on).
+    if (s.configSyncOtherPlugins) {
+      this.renderConfigPluginList(containerEl, s);
+    }
 
     // Dedicated Drive folder for the config file.
     new Setting(containerEl)
@@ -611,6 +622,133 @@ export class SettingsTab extends PluginSettingTab {
     this.configSyncButton.setDisabled(
       this.plugin.isConfigSyncing() || !this.plugin.hasConfigPassphrase()
     );
+  }
+
+  /**
+   * "Properties to sync" — a collapsible checkbox tree of this plugin's own
+   * data.json paths. Checked = sync; unchecked = keep on this device only
+   * (added to `configIgnorePaths`). Async: reads data.json, then fills the tree.
+   */
+  private renderConfigPropsTree(
+    containerEl: HTMLElement,
+    s: PluginSettings
+  ): void {
+    new Setting(containerEl)
+      .setName(t("configSyncPropsName"))
+      .setDesc(t("configSyncPropsDesc"))
+      .setHeading();
+    const treeEl = containerEl.createDiv({ cls: "gds-cfg-tree" });
+
+    void (async () => {
+      const data = await this.plugin.configSync.readOwnData();
+      const paths = discoverPaths(data, CONFIG_SYNC_DEVICE_LOCAL_KEYS).sort();
+      treeEl.empty();
+      if (paths.length === 0) return;
+
+      const ignored = new Set(s.configIgnorePaths);
+      // Descendants of an ignored container are implicitly ignored too.
+      const isIgnored = (p: string) =>
+        ignored.has(p) ||
+        [...ignored].some((ig) => p === ig || p.startsWith(`${ig}.`));
+
+      // Persist a change: `paths` is the set of leaf/descendant paths a checkbox
+      // governs. Toggling on removes them from the ignore set; off adds the node.
+      const setSynced = async (node: string, synced: boolean) => {
+        const next = new Set(s.configIgnorePaths);
+        if (synced) {
+          // Un-ignore this node and any ignored descendants of it.
+          for (const ig of [...next]) {
+            if (ig === node || ig.startsWith(`${node}.`)) next.delete(ig);
+          }
+        } else {
+          // Ignore this node; drop now-redundant descendant entries.
+          for (const ig of [...next]) {
+            if (ig.startsWith(`${node}.`)) next.delete(ig);
+          }
+          next.add(node);
+        }
+        s.configIgnorePaths = [...next];
+        await this.plugin.saveSettings();
+        this.display(); // re-render so descendant checkboxes reflect the change
+      };
+
+      // Build parent→children structure to render containers as <details>.
+      const children = new Map<string, string[]>();
+      for (const p of paths) {
+        const parent = p.includes(".")
+          ? p.slice(0, p.lastIndexOf("."))
+          : "";
+        if (!children.has(parent)) children.set(parent, []);
+        children.get(parent)!.push(p);
+      }
+
+      const renderLevel = (parentEl: HTMLElement, parent: string) => {
+        for (const p of children.get(parent) ?? []) {
+          const hasKids = children.has(p);
+          const label = p.includes(".") ? p.slice(p.lastIndexOf(".") + 1) : p;
+          if (hasKids) {
+            const det = parentEl.createEl("details", {
+              cls: "gds-cfg-node",
+            });
+            det.open = true;
+            const sum = det.createEl("summary");
+            const cb = sum.createEl("input", { type: "checkbox" });
+            cb.checked = !isIgnored(p);
+            cb.onchange = () => void setSynced(p, cb.checked);
+            sum.createSpan({ text: ` ${label}` });
+            const kids = det.createDiv({ cls: "gds-cfg-children" });
+            renderLevel(kids, p);
+          } else {
+            const row = parentEl.createDiv({ cls: "gds-cfg-leaf" });
+            const cb = row.createEl("input", { type: "checkbox" });
+            cb.checked = !isIgnored(p);
+            cb.onchange = () => void setSynced(p, cb.checked);
+            row.createSpan({ text: ` ${label}` });
+          }
+        }
+      };
+      renderLevel(treeEl, "");
+    })();
+  }
+
+  /**
+   * Per-plugin selection list (only shown when "sync other plugins" is on).
+   * A checkbox per installed plugin, bound to membership in
+   * `configSyncPluginIds`. Async: lists plugins, then fills the rows.
+   */
+  private renderConfigPluginList(
+    containerEl: HTMLElement,
+    s: PluginSettings
+  ): void {
+    new Setting(containerEl)
+      .setName(t("configSyncPluginsListName"))
+      .setDesc(t("configSyncPluginsListDesc"))
+      .setHeading();
+    const listEl = containerEl.createDiv({ cls: "gds-cfg-plugins" });
+
+    void (async () => {
+      const plugins = await this.plugin.configSync.listInstalledPlugins();
+      listEl.empty();
+      if (plugins.length === 0) {
+        listEl.createDiv({
+          cls: "gds-tree-empty",
+          text: t("configSyncPluginsEmpty"),
+        });
+        return;
+      }
+      const selected = new Set(s.configSyncPluginIds);
+      for (const { id, name } of plugins) {
+        new Setting(listEl).setName(name).setDesc(id).addToggle((c) =>
+          c.setValue(selected.has(id)).onChange(async (v) => {
+            const next = new Set(s.configSyncPluginIds);
+            if (v) next.add(id);
+            else next.delete(id);
+            s.configSyncPluginIds = [...next];
+            await this.plugin.saveSettings();
+          })
+        );
+      }
+    })();
   }
 
   private renderTokenTransfer(containerEl: HTMLElement): void {

@@ -162,6 +162,18 @@ export interface PluginSettings {
    * (a device without a plugin simply doesn't have its file to sync).
    */
   configSyncOtherPlugins: boolean;
+  /**
+   * Normalized dot-paths of THIS plugin's `data.json` that must NOT sync
+   * (unchecked in the "properties to sync" tree). Array indices collapse to `[]`
+   * (e.g. `targets[].excludeFolders`). Applied only to our own file. Device-local.
+   */
+  configIgnorePaths: string[];
+  /**
+   * Allowlist of OTHER plugin ids whose `data.json` syncs (opt-in per plugin).
+   * Only consulted when `configSyncOtherPlugins` is on; empty = nothing else
+   * syncs. Device-local.
+   */
+  configSyncPluginIds: string[];
 }
 
 /**
@@ -177,6 +189,8 @@ export const CONFIG_SYNC_DEVICE_LOCAL_KEYS = [
   "configDriveSharedId",
   "configPassphraseObf",
   "configSyncOtherPlugins",
+  "configIgnorePaths",
+  "configSyncPluginIds",
 ] as const;
 
 /**
@@ -298,6 +312,11 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   configDriveSharedId: "",
   configPassphraseObf: "",
   configSyncOtherPlugins: false,
+  // Seed the ignore list with excludeFolders — it's genuinely device-specific
+  // (per-target local folder paths), so it shouldn't travel by default. The
+  // user can re-enable it in the "properties to sync" tree.
+  configIgnorePaths: ["targets[].excludeFolders"],
+  configSyncPluginIds: [],
 };
 
 /** Builds a fresh, empty sync target with sensible defaults. */
