@@ -169,11 +169,20 @@ export interface PluginSettings {
    */
   configIgnorePaths: string[];
   /**
-   * Allowlist of OTHER plugin ids whose `data.json` syncs (opt-in per plugin).
-   * Only consulted when `configSyncOtherPlugins` is on; empty = nothing else
-   * syncs. Device-local.
+   * OTHER plugin ids this device explicitly TICKED to sync (include intent).
+   * The effective set of synced plugins is the union of these with the plugins
+   * already present in the Drive config folder (installed here) — so a plugin
+   * synced from another device shows as checked here too. Device-local.
    */
   configSyncPluginIds: string[];
+  /**
+   * OTHER plugin ids this device explicitly UNTICKED (pending-remove intent).
+   * On the next sync their Drive copy is trashed (scoped to files this device
+   * synced) and the id is cleared from here. Lets a plugin that's in Drive read
+   * as unchecked immediately, with the actual removal deferred to the run.
+   * Device-local.
+   */
+  configSyncPluginRemoveIds: string[];
 }
 
 /**
@@ -191,6 +200,7 @@ export const CONFIG_SYNC_DEVICE_LOCAL_KEYS = [
   "configSyncOtherPlugins",
   "configIgnorePaths",
   "configSyncPluginIds",
+  "configSyncPluginRemoveIds",
 ] as const;
 
 /**
@@ -317,6 +327,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   // user can re-enable it in the "properties to sync" tree.
   configIgnorePaths: ["targets[].excludeFolders"],
   configSyncPluginIds: [],
+  configSyncPluginRemoveIds: [],
 };
 
 /** Builds a fresh, empty sync target with sensible defaults. */

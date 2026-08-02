@@ -81,6 +81,10 @@ function device(
       holder.current = JSON.parse(
         await vault.adapter.read(DATA_PATH)
       ) as PluginSettings;
+    },
+    async () => {
+      // onSettingsChanged: engine mutated holder.current in place; nothing to
+      // re-read (the holder IS the live object). No-op for the fake.
     }
   );
   const noConflict = async () => undefined;
@@ -390,8 +394,12 @@ describe("config sync (integration)", () => {
       expect(uploaded).toBeTruthy();
       expect(a.state.get(OTHER_PATH)).not.toBeNull();
 
-      // Now deselect it and sync again on the SAME device (base + state kept).
-      a.settings.configSyncPluginIds = [];
+      // After upload, the include intent is cleared (Drive is now the truth).
+      expect(a.settings.configSyncPluginIds).not.toContain(OTHER_ID);
+
+      // Now DESELECT it (untick → pending-remove) and sync again on the SAME
+      // device (base + state kept).
+      a.settings.configSyncPluginRemoveIds = [OTHER_ID];
       const before = drive.calls.trashFile.length;
       const outcome = await a.sync();
 
@@ -399,6 +407,43 @@ describe("config sync (integration)", () => {
       expect(drive.calls.trashFile).toContain(uploaded!.id);
       expect(a.state.get(OTHER_PATH)).toBeNull();
       if (outcome.kind === "changed") expect(outcome.deleted).toBe(1);
+    });
+
+    it("device 2 syncs a plugin already in Drive without a local include (union)", async () => {
+      // Device 1 uploads the plugin.
+      const a = device(
+        drive,
+        settings({
+          configSyncOtherPlugins: true,
+          configSyncPluginIds: [OTHER_ID],
+        })
+      );
+      a.vault.seed(OTHER_PATH, JSON.stringify({ v: "from-A" }));
+      await a.state.load();
+      await a.sync();
+
+      // Device 2: plugin installed locally, but EMPTY local include list. The
+      // bug was that it showed unchecked and didn't participate. It must now be
+      // treated as selected because its file is in Drive.
+      const b = device(
+        drive,
+        settings({
+          configSyncOtherPlugins: true,
+          configSyncPluginIds: [], // nothing ticked locally
+          targets: [],
+        })
+      );
+      b.vault.seed(OTHER_PATH, JSON.stringify({ v: "from-B-old" }));
+      await b.state.load();
+
+      // The UI derives "checked" from Drive membership:
+      const inDrive = await b.engine.listSyncedPluginIds();
+      expect(inDrive.has(OTHER_ID)).toBe(true);
+
+      // And the engine actually syncs it (here: conflict → keepRemote → download).
+      const outcome = await b.sync(async () => "keepRemote");
+      expect(["downloaded", "changed"]).toContain(outcome.kind);
+      expect(JSON.parse(b.vault.read(OTHER_PATH))).toEqual({ v: "from-A" });
     });
 
     it("never trashes a file this device has no base entry for (foreign file)", async () => {

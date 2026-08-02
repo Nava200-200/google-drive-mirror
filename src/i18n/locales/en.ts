@@ -315,7 +315,7 @@ export const en = {
     "Also sync the data.json of OTHER installed plugins you select below (only for plugins already installed on both devices). Each file is fully encrypted with your passphrase, so any secrets they store stay unreadable in Drive. Other plugins usually need an Obsidian reload to apply.",
   configSyncPluginsListName: "Plugins to sync",
   configSyncPluginsListDesc:
-    "Pick which installed plugins' settings to sync. Unticking a plugin that was already synced removes its copy from Drive (moved to trash) for all devices.",
+    "Pick which installed plugins' settings to sync. A plugin already synced from another device shows as ticked here too. Unticking a synced plugin removes its copy from Drive (moved to trash) on the next sync, for all devices.",
   configSyncPluginsEmpty: "No other plugins installed.",
   configSyncPropsName: "Properties to sync",
   configSyncPropsDesc:

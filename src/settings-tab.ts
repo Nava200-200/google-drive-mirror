@@ -713,8 +713,14 @@ export class SettingsTab extends PluginSettingTab {
 
   /**
    * Per-plugin selection list (only shown when "sync other plugins" is on).
-   * A checkbox per installed plugin, bound to membership in
-   * `configSyncPluginIds`. Async: lists plugins, then fills the rows.
+   *
+   * A plugin is "checked" when it's part of the effective selection:
+   *   (already synced in Drive) ∪ (ticked here), minus (unticked here).
+   * This makes a plugin synced from ANOTHER device show as checked here too
+   * (its file is in the shared Drive folder), which was the missing state.
+   * Ticking/unticking records intent; the next "Sync settings now" uploads new
+   * ones and trashes deselected ones. Async: lists installed + Drive-synced,
+   * then fills the rows.
    */
   private renderConfigPluginList(
     containerEl: HTMLElement,
@@ -727,7 +733,10 @@ export class SettingsTab extends PluginSettingTab {
     const listEl = containerEl.createDiv({ cls: "gds-cfg-plugins" });
 
     void (async () => {
-      const plugins = await this.plugin.configSync.listInstalledPlugins();
+      const [plugins, inDrive] = await Promise.all([
+        this.plugin.configSync.listInstalledPlugins(),
+        this.plugin.configSync.listSyncedPluginIds(),
+      ]);
       listEl.empty();
       if (plugins.length === 0) {
         listEl.createDiv({
@@ -736,17 +745,35 @@ export class SettingsTab extends PluginSettingTab {
         });
         return;
       }
-      const selected = new Set(s.configSyncPluginIds);
+      // Effective checked state for a plugin id.
+      const isChecked = (id: string) =>
+        !s.configSyncPluginRemoveIds.includes(id) &&
+        (inDrive.has(id) || s.configSyncPluginIds.includes(id));
+
       for (const { id, name } of plugins) {
-        new Setting(listEl).setName(name).setDesc(id).addToggle((c) =>
-          c.setValue(selected.has(id)).onChange(async (v) => {
-            const next = new Set(s.configSyncPluginIds);
-            if (v) next.add(id);
-            else next.delete(id);
-            s.configSyncPluginIds = [...next];
-            await this.plugin.saveSettings();
-          })
-        );
+        new Setting(listEl)
+          .setName(name)
+          .setDesc(id)
+          .addToggle((c) =>
+            c.setValue(isChecked(id)).onChange(async (v) => {
+              const include = new Set(s.configSyncPluginIds);
+              const remove = new Set(s.configSyncPluginRemoveIds);
+              if (v) {
+                // Tick → include; cancel any pending removal.
+                remove.delete(id);
+                if (!inDrive.has(id)) include.add(id);
+                else include.delete(id); // already in Drive → no include needed
+              } else {
+                // Untick → drop include; if it's in Drive, mark pending removal.
+                include.delete(id);
+                if (inDrive.has(id)) remove.add(id);
+                else remove.delete(id);
+              }
+              s.configSyncPluginIds = [...include];
+              s.configSyncPluginRemoveIds = [...remove];
+              await this.plugin.saveSettings();
+            })
+          );
       }
     })();
   }

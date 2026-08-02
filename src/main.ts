@@ -125,7 +125,8 @@ export default class GoogleDriveSyncPlugin extends Plugin {
       this.configStatus,
       this.manifest.id,
       () => this.settings,
-      () => this.onConfigDownloaded()
+      () => this.onConfigDownloaded(),
+      () => this.saveSettings()
     );
     // Restore the obfuscated passphrase into memory so unattended sync works.
     await this.restoreConfigPassphrase();

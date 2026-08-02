@@ -49,6 +49,17 @@ function pluginDataRelPath(pluginId: string): string {
   return `${CONFIG_DIR}/plugins/${pluginId}/${DATA_FILE}`;
 }
 
+/**
+ * Inverse of `pluginDataRelPath`: extracts the plugin id from an
+ * `.obsidian/plugins/<id>/data.json` relative path, or null if it doesn't match.
+ */
+function pluginIdFromRelPath(rel: string): string | null {
+  const m = rel.match(
+    new RegExp(`^${CONFIG_DIR}/plugins/([^/]+)/${DATA_FILE}$`)
+  );
+  return m ? m[1] : null;
+}
+
 /** What a config-sync run resolved to (for the caller / UI). */
 export type ConfigSyncOutcome =
   | { kind: "noop" }
@@ -134,16 +145,20 @@ function utf8(s: string): ArrayBuffer {
  * installed plugin's `data.json`.
  *
  * Separate subsystem from note sync (`SyncEngine`): shares only the OAuth
- * account and Drive transport. It NEVER deletes (the reconciler has no delete
- * action). Every file is WHOLE-FILE encrypted under the per-device passphrase
- * (which is never uploaded), so the Drive copy is fully opaque — safe even for
- * third-party plugins that store secrets in their data.json.
+ * account and Drive transport. The only deletion it performs is trashing the
+ * Drive copy of a plugin the user explicitly DESELECTED. Every file is
+ * WHOLE-FILE encrypted under the per-device passphrase (which is never
+ * uploaded), so the Drive copy is fully opaque — safe even for third-party
+ * plugins that store secrets in their data.json.
  */
 export class ConfigSyncEngine {
   /**
    * @param onDownloaded Called after THIS plugin's own data.json is written on
    *   this device (the caller re-runs loadSettings/rebuild — see main.ts). Not
    *   called for other plugins (they need an Obsidian reload to pick up changes).
+   * @param onSettingsChanged Called when the engine mutated the live settings
+   *   object (clearing resolved plugin include/remove intent) and it must be
+   *   persisted. The caller runs `saveSettings()`.
    */
   constructor(
     private vault: Vault,
@@ -153,7 +168,8 @@ export class ConfigSyncEngine {
     private status: SyncStatus,
     private pluginId: string,
     private getSettings: () => PluginSettings,
-    private onDownloaded: () => Promise<void>
+    private onDownloaded: () => Promise<void>,
+    private onSettingsChanged: () => Promise<void>
   ) {}
 
   private folderId(): string {
@@ -196,7 +212,9 @@ export class ConfigSyncEngine {
    * data.json, plus (when `configSyncOtherPlugins`) every other plugin's
    * data.json present on this device.
    */
-  private async collectLocalFiles(): Promise<LocalConfigFile[]> {
+  private async collectLocalFiles(
+    remotePluginIds: ReadonlySet<string>
+  ): Promise<LocalConfigFile[]> {
     const files: LocalConfigFile[] = [
       {
         relPath: pluginDataRelPath(this.pluginId),
@@ -207,10 +225,15 @@ export class ConfigSyncEngine {
 
     if (!this.getSettings().configSyncOtherPlugins) return files;
 
-    // Only the plugins the user opted into (allowlist). Empty = none.
-    const allow = new Set(this.getSettings().configSyncPluginIds);
+    // Effective selection = (already in Drive) ∪ (explicitly ticked here),
+    // minus (explicitly unticked here, pending removal). "In Drive" makes a
+    // plugin synced from ANOTHER device sync from this one too, without needing
+    // the local include list — the fix for the missing device-2 checkboxes.
+    const included = new Set(this.getSettings().configSyncPluginIds);
+    for (const id of remotePluginIds) included.add(id);
+    const removing = new Set(this.getSettings().configSyncPluginRemoveIds);
 
-    // Enumerate plugin folders and include each opted-in data.json (except ours).
+    // Enumerate plugin folders and include each selected + installed data.json.
     try {
       const dir = this.pluginsDir();
       if (!(await this.vault.adapter.exists(dir))) return files;
@@ -218,7 +241,7 @@ export class ConfigSyncEngine {
       for (const folderPath of listing.folders) {
         const id = folderPath.split("/").pop();
         if (!id || id === this.pluginId) continue;
-        if (!allow.has(id)) continue; // not selected → skip
+        if (!included.has(id) || removing.has(id)) continue; // not selected
         const adapterPath = `${dir}/${id}/${DATA_FILE}`;
         if (await this.vault.adapter.exists(adapterPath)) {
           files.push({
@@ -267,6 +290,28 @@ export class ConfigSyncEngine {
     }
     out.sort((a, b) => a.name.localeCompare(b.name));
     return out;
+  }
+
+  /**
+   * Which OTHER plugin ids currently have a settings file in the Drive config
+   * folder (i.e. are synced). This is the SHARED source of truth for the
+   * per-plugin selection: a plugin synced from another device shows up here, so
+   * the settings UI can reflect it even though the local allowlist is empty.
+   * Returns an empty set if not signed in / no folder / listing fails.
+   */
+  async listSyncedPluginIds(): Promise<Set<string>> {
+    const ids = new Set<string>();
+    if (!this.oauth.isConfigured() || !this.folderId()) return ids;
+    try {
+      const { files } = await this.fetchRemote();
+      for (const rel of files.keys()) {
+        const id = pluginIdFromRelPath(rel);
+        if (id && id !== this.pluginId) ids.add(id);
+      }
+    } catch (e) {
+      log.warn("Config sync: cannot list synced plugin ids:", e);
+    }
+    return ids;
   }
 
   /**
@@ -514,7 +559,14 @@ export class ConfigSyncEngine {
       };
     }
 
-    const localFiles = await this.collectLocalFiles();
+    // Plugin ids currently synced in Drive — the shared selection truth.
+    const remotePluginIds = new Set<string>();
+    for (const rel of remoteMap.keys()) {
+      const id = pluginIdFromRelPath(rel);
+      if (id && id !== this.pluginId) remotePluginIds.add(id);
+    }
+
+    const localFiles = await this.collectLocalFiles(remotePluginIds);
 
     // The union of paths present locally and/or remotely. (Remote-only files —
     // e.g. a plugin installed on the other device — are downloaded, never
@@ -532,31 +584,32 @@ export class ConfigSyncEngine {
     let deleted = 0;
     let ownDownloaded = false;
 
-    // --- Exclusion handling (the ONE place config sync deletes) --------------
-    // A path we PREVIOUSLY synced (has a base entry) but is no longer selected
-    // locally (absent from `localByPath` — the allowlist / toggle filtered it)
-    // was deselected. Trash its Drive copy (scoped to files WE synced), drop its
-    // base, and remove it from the run so it isn't re-downloaded. A path with NO
-    // base entry is never touched (never delete a file this device didn't put
-    // there — a foreign file, or one genuinely new from another device that
-    // should download instead). Our own file is always in localByPath, so it is
-    // never treated as excluded.
-    for (const rel of [...relPaths]) {
-      if (localByPath.has(rel)) continue; // still selected → normal handling
+    // --- Deselection handling (the ONE place config sync deletes) ------------
+    // Deletion is driven ONLY by an EXPLICIT untick (`configSyncPluginRemoveIds`)
+    // — never merely by "absent from the local selection", because another
+    // device may legitimately want a plugin this device doesn't. For each
+    // explicitly-removed plugin: trash its Drive copy (only if WE synced it, i.e.
+    // it has a base entry), drop its base, and remove it from the run so it isn't
+    // re-downloaded. A file we never synced (no base) is never trashed.
+    const removeIds = new Set(this.getSettings().configSyncPluginRemoveIds);
+    const clearedRemoveIds = new Set<string>();
+    for (const id of removeIds) {
+      const rel = pluginDataRelPath(id);
       const base = this.state.get(rel);
-      if (!base) continue; // never synced by us → leave alone (may download)
-      // Deselected: trash the remote copy if present, drop the base, skip it.
       const remote = remoteMap.get(rel);
-      if (remote) {
+      if (base && remote) {
         try {
           await this.drive.trashFile(remote.driveId);
           deleted++;
         } catch (e) {
-          log.warn(`Config sync: could not trash excluded ${rel}:`, e);
+          log.warn(`Config sync: could not trash deselected ${rel}:`, e);
         }
       }
-      this.state.delete(rel);
+      if (base) this.state.delete(rel);
       relPaths.delete(rel);
+      // The removal has been applied (or there was nothing to remove) → clear
+      // the pending-remove intent so it doesn't linger.
+      clearedRemoveIds.add(id);
     }
     // Track a cancelled conflict + its mtimes, so a run where the ONLY thing
     // that happened was a cancelled conflict reports "conflict" (the caller
@@ -651,6 +704,35 @@ export class ConfigSyncEngine {
     }
 
     await this.state.save();
+
+    // Clear resolved intent so it doesn't linger. Once a plugin is in Drive the
+    // union (in-Drive ∪ ticked) keeps it selected without the include entry; a
+    // removed plugin has been trashed. Only clear include ids that actually
+    // reached Drive (still-pending uploads stay so a later run retries).
+    const settings = this.getSettings();
+    let intentChanged = false;
+    if (clearedRemoveIds.size > 0) {
+      const nextRemove = settings.configSyncPluginRemoveIds.filter(
+        (id) => !clearedRemoveIds.has(id)
+      );
+      if (nextRemove.length !== settings.configSyncPluginRemoveIds.length) {
+        settings.configSyncPluginRemoveIds = nextRemove;
+        intentChanged = true;
+      }
+    }
+    const syncedNow = new Set<string>();
+    for (const rel of this.state.all().map((b) => b.path)) {
+      const id = pluginIdFromRelPath(rel);
+      if (id) syncedNow.add(id);
+    }
+    const nextInclude = settings.configSyncPluginIds.filter(
+      (id) => !syncedNow.has(id)
+    );
+    if (nextInclude.length !== settings.configSyncPluginIds.length) {
+      settings.configSyncPluginIds = nextInclude;
+      intentChanged = true;
+    }
+    if (intentChanged) await this.onSettingsChanged();
 
     // Applying OUR OWN downloaded settings needs a live reload (targets/options).
     if (ownDownloaded) await this.onDownloaded();

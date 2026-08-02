@@ -324,7 +324,7 @@ export const it: Partial<Messages> = {
     "Sincronizza anche il data.json degli altri plugin selezionati qui sotto (solo per i plugin già installati su entrambi i dispositivi). Ogni file è cifrato completamente con la tua passphrase, così eventuali segreti restano illeggibili su Drive. Gli altri plugin di solito richiedono un riavvio di Obsidian per applicare le modifiche.",
   configSyncPluginsListName: "Plugin da sincronizzare",
   configSyncPluginsListDesc:
-    "Scegli quali plugin installati sincronizzare. Deselezionare un plugin già sincronizzato rimuove la sua copia da Drive (spostata nel cestino) per tutti i dispositivi.",
+    "Scegli quali plugin installati sincronizzare. Un plugin già sincronizzato da un altro dispositivo appare selezionato anche qui. Deselezionare un plugin sincronizzato rimuove la sua copia da Drive (spostata nel cestino) alla prossima sincronizzazione, per tutti i dispositivi.",
   configSyncPluginsEmpty: "Nessun altro plugin installato.",
   configSyncPropsName: "Proprietà da sincronizzare",
   configSyncPropsDesc:
