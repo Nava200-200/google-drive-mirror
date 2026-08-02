@@ -1058,3 +1058,169 @@ describe("SyncEngine.sync — Google Docs & Sheets (view-only stubs)", () => {
     );
   });
 });
+
+describe("SyncEngine.sync — all file types (adapter walk, incl. HEIC)", () => {
+  it("uploads files with extensions Obsidian doesn't recognize (.heic, .avif)", async () => {
+    // Arrange: files Obsidian's getFiles() would omit — collectLocal now walks
+    // the adapter, so they must be collected and uploaded.
+    const { engine, vault, drive, store } = setup();
+    vault.seed("Photos/img.heic", "heic-bytes");
+    vault.seed("Photos/pic.avif", "avif-bytes");
+
+    // Act
+    await engine.sync(false);
+
+    // Assert
+    const uploaded = drive.calls.createFile.map((c) => c.path).sort();
+    expect(uploaded).toEqual(["Photos/img.heic", "Photos/pic.avif"]);
+    expect(store.get("Photos/img.heic")).toBeDefined();
+    expect(store.get("Photos/pic.avif")).toBeDefined();
+  });
+
+  it("NEVER walks the config dir, .trash, .DS_Store, or root dot-folders", async () => {
+    // Arrange: a real file plus system + hidden paths a raw adapter walk surfaces.
+    const { engine, vault, drive } = setup();
+    vault.seed("note.md", "real");
+    vault.seed(".obsidian/plugins/x/data.json", "{}");
+    vault.seed(".obsidian/app.json", "{}");
+    vault.seed(".trash/old.md", "trashed");
+    vault.seed(".DS_Store", "junk");
+    vault.seed("sub/.DS_Store", "junk");
+    // Hidden plugin/cache folders at the vault root (the .smart-env regression).
+    vault.seed(".smart-env/embeddings.json", "big");
+    vault.seed(".git/config", "x");
+    vault.seed(".obsidian-git-data", "x"); // root dot-file
+
+    // Act
+    await engine.sync(false);
+
+    // Assert: only the real note uploaded; no system/hidden path leaked in.
+    expect(drive.calls.createFile.map((c) => c.path)).toEqual(["note.md"]);
+  });
+
+  it("still syncs a dot-named file INSIDE a normal folder (not root)", async () => {
+    // Arrange: only root-level dot-entries are excluded; a nested one is fine.
+    const { engine, vault, drive } = setup();
+    vault.seed("Notes/.keep", "keepme");
+
+    // Act
+    await engine.sync(false);
+
+    // Assert
+    expect(drive.calls.createFile.map((c) => c.path)).toEqual(["Notes/.keep"]);
+  });
+
+  it("a previously-synced file that became excluded is NOT deleted (Case 1)", async () => {
+    // Arrange: .smart-env was uploaded by a prior run (base says local+remote),
+    // then excluded by this fix. It's absent from both local + remote now → the
+    // reconciler must NOT propagate a deletion (deletion-safety), just orphan it.
+    const { engine, vault, drive, store } = setup();
+    vault.seed("note.md", "real");
+    store.set({
+      path: ".smart-env/embeddings.json",
+      local: true,
+      remote: true,
+      md5: "old",
+      size: 3,
+      localMtime: 1_000,
+      remoteMtime: 1_000,
+      driveId: "smart1",
+      isFolder: false,
+    });
+
+    // Act
+    await engine.sync(false);
+
+    // Assert: the orphaned Drive file was never trashed.
+    expect(drive.calls.trashFile).not.toContain("smart1");
+  });
+
+  it("scopes the walk to a subfolder target (files outside are not collected)", async () => {
+    // Arrange
+    const { engine, vault, drive } = setup({ localFolder: "Sync" });
+    vault.seed("Sync/inside.heic", "in");
+    vault.seed("Outside/other.heic", "out");
+
+    // Act
+    await engine.sync(false);
+
+    // Assert: relative path is folder-stripped; outside file ignored.
+    expect(drive.calls.createFile.map((c) => c.path)).toEqual(["inside.heic"]);
+  });
+
+  it("reuses the hash cache for an unchanged .heic (no re-read)", async () => {
+    // Arrange: base already has the file at its current mtime+size.
+    const { engine, vault, store } = setup();
+    const content = "heic-bytes";
+    vault.seed("img.heic", content); // fake mtime defaults to 1_000
+    const stat = await vault.adapter.stat("img.heic");
+    store.set({
+      path: "img.heic",
+      local: true,
+      remote: true,
+      md5: md5Hex(content),
+      size: stat!.size,
+      localMtime: stat!.mtime,
+      remoteMtime: 1_000,
+      driveId: "d1",
+      isFolder: false,
+    });
+    // A matching remote so it reconciles to noop.
+    // (drive listing is empty here; a noop upload path still must not re-read.)
+    vault.adapter.readBinaryCalls.length = 0;
+
+    // Act
+    await engine.sync(false);
+
+    // Assert: the unchanged .heic was NOT read (served from the hash cache).
+    expect(vault.adapter.readBinaryCalls).not.toContain("img.heic");
+  });
+
+  it("propagates a local .heic deletion to Drive (not misread)", async () => {
+    // Arrange: base says the .heic existed on BOTH sides; it's now gone locally.
+    const { engine, vault, drive, store } = setup();
+    drive.seed({ path: "img.heic", content: "heic-bytes", md5: "h1", id: "d1" });
+    store.set({
+      path: "img.heic",
+      local: true,
+      remote: true,
+      md5: "h1",
+      size: 10,
+      localMtime: 1_000,
+      remoteMtime: 1_000,
+      driveId: "d1",
+      isFolder: false,
+    });
+    // File absent locally (never seeded) → deleted locally.
+
+    // Act
+    await engine.sync(false);
+
+    // Assert: deletion propagated to Drive trash, not treated as a new download.
+    expect(drive.calls.trashFile).toContain("d1");
+  });
+
+  it("trashes a locally-present .heic when it's deleted in Drive", async () => {
+    // Arrange: base says both sides had it; local still present, remote gone.
+    const { engine, vault, store } = setup();
+    vault.seed("img.heic", "heic-bytes");
+    store.set({
+      path: "img.heic",
+      local: true,
+      remote: true,
+      md5: md5Hex("heic-bytes"),
+      size: (await vault.adapter.stat("img.heic"))!.size,
+      localMtime: 1_000,
+      remoteMtime: 1_000,
+      driveId: "d1",
+      isFolder: false,
+    });
+    // Drive listing is empty (remote deleted).
+
+    // Act
+    await engine.sync(false);
+
+    // Assert: the local .heic was trashed (removed from the vault map).
+    expect(vault.has("img.heic")).toBe(false);
+  });
+});

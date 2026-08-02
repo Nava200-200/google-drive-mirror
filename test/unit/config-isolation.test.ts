@@ -43,7 +43,27 @@ describe("config-sync isolation via isSystemPath", () => {
     expect(
       isSystemPath(".myconfig/plugins/google-drive-mirror/data.json", ".myconfig")
     ).toBe(true);
-    // Under a renamed config dir, a literal `.obsidian/...` path is a normal file.
-    expect(isSystemPath(".obsidian/x.json", ".myconfig")).toBe(false);
+    // `.obsidian` at the vault root is ALWAYS excluded (it's a root dot-folder),
+    // even when the config dir was renamed to something else.
+    expect(isSystemPath(".obsidian/x.json", ".myconfig")).toBe(true);
+  });
+
+  describe("vault-root hidden dot-folders", () => {
+    it("excludes any root-level dot-folder (.smart-env, .git, …)", () => {
+      for (const p of [
+        ".smart-env/embeddings.json",
+        ".git/config",
+        ".trash/old.md",
+        ".foo",
+        ".obsidian/app.json",
+      ]) {
+        expect(isSystemPath(p, cfg)).toBe(true);
+      }
+    });
+
+    it("does NOT exclude a dot-file inside a normal folder", () => {
+      expect(isSystemPath("Notes/.keep", cfg)).toBe(false);
+      expect(isSystemPath("Attachments/.hidden/x.png", cfg)).toBe(false);
+    });
   });
 });

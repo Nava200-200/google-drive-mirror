@@ -889,21 +889,30 @@ export class SyncEngine {
     const result = new Map<string, LocalFile>();
     const prefix = this.folderPrefix();
 
-    for (const file of this.vault.getFiles()) {
-      if (!this.inScope(file.path)) continue;
+    // Enumerate via the filesystem adapter (NOT vault.getFiles()), so ALL file
+    // types are seen — Obsidian's getFiles() omits extensions it doesn't
+    // recognize (.heic, .heif, .avif, …), which then silently never uploaded.
+    // The walk surfaces `.obsidian`/`.trash`/`.DS_Store` too, so every path is
+    // gated through inScope() -> isSystemPath() exactly as before (load-bearing:
+    // a config-folder leak into a whole-vault sync is the worst-case bug).
+    const walkRoot = prefix ? prefix.slice(0, -1) : "";
+    for (const path of await this.listFilesRecursive(walkRoot)) {
+      if (!this.inScope(path)) continue;
       // Google file stub notes (`*.gdoc.md` / `*.gsheet.md`) are a view-only
       // layer, not synced content: never upload them back to Drive and never
       // treat them as "deleted on one side". Managed only by writeGdocStubs().
-      if (isGoogleFileStub(file.path)) continue;
-      if (!this.extensionAllowed(file.path)) continue;
-      const rel = this.toRelative(file.path, prefix);
+      if (isGoogleFileStub(path)) continue;
+      if (!this.extensionAllowed(path)) continue;
+      const rel = this.toRelative(path, prefix);
       // Ignore patterns check the SYNC-RELATIVE path (like the Drive side).
       if (this.isIgnored(rel)) continue;
       // Excluded folders (other targets' scopes + user excludeFolders).
       if (this.isExcluded(rel)) continue;
 
-      const mtimeMs = file.stat.mtime;
-      const size = file.stat.size;
+      const stat = await this.vault.adapter.stat(path);
+      if (!stat) continue; // vanished between listing and stat
+      const mtimeMs = stat.mtime;
+      const size = stat.size;
 
       // Hash cache: mtime+size unchanged vs. the base -> reuse the stored
       // MD5, do NOT read the file.
@@ -920,7 +929,7 @@ export class SyncEngine {
       }
 
       // Changed / new / no cache -> read and hash the content.
-      const content = await this.vault.adapter.readBinary(file.path);
+      const content = await this.vault.adapter.readBinary(path);
       result.set(rel, {
         path: rel,
         md5: md5Hex(content),
@@ -929,6 +938,38 @@ export class SyncEngine {
       });
     }
     return result;
+  }
+
+  /**
+   * Recursively lists all FILE paths under `dir` (vault-relative; "" = vault
+   * root) via the filesystem adapter. Prunes system folders (`.obsidian`,
+   * `.trash`) at the directory level so we never descend into them — both a
+   * safety guard (they must never sync) and a perf win. Individual files are
+   * still re-checked by the caller's `inScope` (covers `.DS_Store`).
+   */
+  private async listFilesRecursive(dir: string): Promise<string[]> {
+    const out: string[] = [];
+    const queue: string[] = [dir];
+    while (queue.length > 0) {
+      const current = queue.shift() as string;
+      // Root is listed with "" (both the real adapter and the fake accept it);
+      // subfolders are normalized.
+      const listPath = current === "" ? "" : normalizePath(current);
+      let listing: { files: string[]; folders: string[] };
+      try {
+        listing = await this.vault.adapter.list(listPath);
+      } catch {
+        // Folder vanished / unreadable — skip it rather than abort the run.
+        continue;
+      }
+      for (const f of listing.files) out.push(f);
+      for (const sub of listing.folders) {
+        // Don't descend into system folders (config dir / .trash).
+        if (isSystemPath(sub, this.vault.configDir)) continue;
+        queue.push(sub);
+      }
+    }
+    return out;
   }
 
   /**
@@ -1411,11 +1452,21 @@ function isGoogleAppsFile(mimeType: string): boolean {
  * Especially relevant when syncing the whole vault. The config folder is not
  * necessarily `.obsidian`; `configDir` carries the vault's actual value
  * (`Vault#configDir`).
+ *
+ * Also excludes any VAULT-ROOT dot-entry (`.smart-env`, `.git`, …): Obsidian
+ * hides leading-dot entries and `vault.getFiles()` never returned them, so when
+ * local collection walks the filesystem adapter directly we must reproduce that
+ * — otherwise a whole-vault sync would upload hidden plugin/cache folders. Only
+ * root-level dot-entries are excluded; a dot-named file inside a normal folder
+ * (e.g. `Notes/.keep`) is still eligible.
  */
 export function isSystemPath(vaultPath: string, configDir: string): boolean {
   const p = vaultPath.startsWith("/") ? vaultPath.slice(1) : vaultPath;
   // Strip any leading "./" and trailing "/" from the configured folder.
   const cfg = configDir.replace(/^\.\//, "").replace(/\/+$/, "");
+  // Root-level dot-entry: the FIRST path segment starts with ".".
+  const firstSegment = p.split("/")[0];
+  if (firstSegment.startsWith(".")) return true;
   return (
     p === cfg ||
     p.startsWith(`${cfg}/`) ||

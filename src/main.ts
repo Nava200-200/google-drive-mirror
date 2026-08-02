@@ -881,11 +881,13 @@ export default class GoogleDriveSyncPlugin extends Plugin {
    */
   private async withSuppressedEvents(fn: () => Promise<void>): Promise<void> {
     // Coarse but robust strategy: ignore all scope paths during the run;
-    // release them again after a short delay.
-    const snapshot = this.app.vault
-      .getFiles()
-      .map((f) => f.path)
-      .filter((p) => this.isInScope(p));
+    // release them again after a short delay. Enumerate via the adapter (not
+    // vault.getFiles(), which omits unrecognized extensions like .heic) so those
+    // files' events are suppressed too — otherwise the engine writing them mid-
+    // run could re-trigger auto-sync.
+    const snapshot = (await this.listAllFiles()).filter((p) =>
+      this.isInScope(p)
+    );
     snapshot.forEach((p) => this.suppressedPaths.add(p));
     try {
       await fn();
@@ -896,17 +898,48 @@ export default class GoogleDriveSyncPlugin extends Plugin {
   }
 
   /**
+   * All file paths in the vault via the filesystem adapter (sees every file,
+   * including extensions Obsidian's getFiles() ignores). Prunes vault-root
+   * dot-folders (config dir, `.trash`, `.smart-env`, …) at the folder level, so
+   * hidden plugin/cache folders are never suppressed/collected. Best-effort —
+   * errors skip that folder.
+   */
+  private async listAllFiles(): Promise<string[]> {
+    const out: string[] = [];
+    const queue: string[] = [""];
+    while (queue.length > 0) {
+      const current = queue.shift() as string;
+      let listing: { files: string[]; folders: string[] };
+      try {
+        listing = await this.app.vault.adapter.list(current);
+      } catch {
+        continue;
+      }
+      out.push(...listing.files);
+      for (const sub of listing.folders) {
+        const s = sub.startsWith("/") ? sub.slice(1) : sub;
+        // Skip any vault-root dot-folder (first path segment starts with ".").
+        if (s.split("/")[0].startsWith(".")) continue;
+        queue.push(sub);
+      }
+    }
+    return out;
+  }
+
+  /**
    * Does the vault path fall into ANY configured target's scope (and is not
    * ignored/excluded there)? Used to decide whether a local change should
    * trigger an auto-sync.
    */
   private isInScope(vaultPath: string): boolean {
     // Never sync system folders (especially for the whole vault). The config
-    // folder is not necessarily ".obsidian" — use Vault#configDir.
+    // folder is not necessarily ".obsidian" — use Vault#configDir. Also exclude
+    // any vault-root dot-folder (.smart-env, .git, .trash, …): Obsidian hides
+    // those and they must never trigger an auto-sync or be uploaded.
     const p = vaultPath.startsWith("/") ? vaultPath.slice(1) : vaultPath;
+    if (p.split("/")[0].startsWith(".")) return false;
     const cfg = this.app.vault.configDir.replace(/^\.\//, "").replace(/\/+$/, "");
     if (p === cfg || p.startsWith(`${cfg}/`)) return false;
-    if (p === ".trash" || p.startsWith(".trash/")) return false;
 
     return this.settings.targets.some((target) =>
       this.inTargetScope(target, vaultPath, p)

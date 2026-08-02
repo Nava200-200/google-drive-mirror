@@ -136,11 +136,12 @@ class FakeAdapter {
   async list(
     dir: string
   ): Promise<{ files: string[]; folders: string[] }> {
-    const prefix = dir.endsWith("/") ? dir : `${dir}/`;
+    // Root ("" or "/") → no prefix, list top-level entries.
+    const prefix = dir === "" || dir === "/" ? "" : dir.endsWith("/") ? dir : `${dir}/`;
     const files = new Set<string>();
     const folders = new Set<string>();
     for (const p of this.files.keys()) {
-      if (!p.startsWith(prefix)) continue;
+      if (prefix && !p.startsWith(prefix)) continue;
       const rest = p.slice(prefix.length);
       const slash = rest.indexOf("/");
       if (slash === -1) {
@@ -163,5 +164,10 @@ class FakeAdapter {
 
   async trashSystem(path: string): Promise<boolean> {
     return this.files.delete(path);
+  }
+
+  /** Adapter-level trash fallback (for files without a loaded TFile, e.g. .heic). */
+  async trashLocal(path: string): Promise<void> {
+    this.files.delete(path);
   }
 }
