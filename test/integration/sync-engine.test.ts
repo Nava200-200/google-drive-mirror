@@ -1224,3 +1224,51 @@ describe("SyncEngine.sync — all file types (adapter walk, incl. HEIC)", () => 
     expect(vault.has("img.heic")).toBe(false);
   });
 });
+
+describe("SyncEngine.sync — subfolder target does not leak its own root as a folder", () => {
+  it("does NOT recreate the sync-root's own (nested) path as a folder in Drive", async () => {
+    // Arrange: a deep subfolder target. In real Obsidian getAllLoadedFiles()
+    // returns the sync-root TFolder itself; the fake now mirrors that (it derives
+    // folders from the seeded file's parent chain, incl. the root). Before the
+    // fix, the root's full vault path leaked as a folder and was recreated as an
+    // empty "2 Areas → Projects → ARC ERP" chain in Drive.
+    const { engine, drive, vault } = setup({
+      localFolder: "2 Areas/Projects/ARC ERP",
+    });
+    vault.seed("2 Areas/Projects/ARC ERP/note.md", "hi");
+
+    // Act
+    await engine.sync(false);
+
+    // Assert: the file uploaded at its sync-relative path; no folder create that
+    // reintroduces the target's own root/parent path.
+    expect(drive.calls.createFile).toEqual([{ path: "note.md" }]);
+    const folderPaths = drive.calls.createFolderPath.map((c) => c.path);
+    expect(folderPaths).not.toContain("2 Areas/Projects/ARC ERP");
+    expect(folderPaths).not.toContain("2 Areas");
+    // No stray folder creates at all for a flat one-file target.
+    expect(folderPaths).toEqual([]);
+  });
+
+  it("still syncs a genuine empty subfolder INSIDE the target (sync-relative)", async () => {
+    // Arrange: a real empty subfolder within the target. The fake derives it from
+    // a placeholder file the target ignores, so the folder is "empty" as far as
+    // synced content goes but present in getAllLoadedFiles().
+    const { engine, drive, vault } = setup({
+      localFolder: "2 Areas/Projects/ARC ERP",
+      ignorePatterns: ".keep",
+    });
+    vault.seed("2 Areas/Projects/ARC ERP/empty-sub/.keep", "");
+
+    // Act
+    await engine.sync(false);
+
+    // Assert: the empty subfolder is created in Drive at its sync-relative path;
+    // the target's own root is NOT.
+    const folderPaths = drive.calls.createFolderPath.map((c) => c.path);
+    expect(folderPaths).toContain("empty-sub");
+    expect(folderPaths).not.toContain("2 Areas/Projects/ARC ERP");
+    // The ignored placeholder must not upload.
+    expect(drive.calls.createFile).toEqual([]);
+  });
+});

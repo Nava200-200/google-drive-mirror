@@ -1006,6 +1006,12 @@ export class SyncEngine {
     for (const f of this.vault.getAllLoadedFiles()) {
       if (!(f instanceof TFolder)) continue;
       if (f.isRoot()) continue;
+      // Skip the sync-root folder itself: for a subfolder target its path
+      // equals the scope prefix and has NO sync-relative name. Adding it would
+      // leak the full vault path as a "folder" (toRelative can't strip a path
+      // without the trailing slash) and recreate the whole parent chain as an
+      // empty subtree in Drive (and, round-tripped, locally).
+      if (prefix && f.path === prefix.slice(0, -1)) continue;
       if (!this.inScope(f.path)) continue;
       const rel = this.toRelative(f.path, prefix);
       if (rel && !this.isIgnored(rel) && !this.isExcluded(rel)) result.add(rel);
@@ -1314,7 +1320,12 @@ export class SyncEngine {
 
   /** Vault path -> sync-relative path (without folder prefix). */
   private toRelative(vaultPath: string, prefix: string): string {
-    return prefix && vaultPath.startsWith(prefix)
+    if (!prefix) return vaultPath;
+    // The sync-root itself maps to the EMPTY relative path — never to its own
+    // full vault path (it lacks the trailing slash, so `startsWith(prefix)` is
+    // false). Guarding here keeps any future caller from leaking the full path.
+    if (vaultPath === prefix.slice(0, -1)) return "";
+    return vaultPath.startsWith(prefix)
       ? vaultPath.slice(prefix.length)
       : vaultPath;
   }

@@ -9,7 +9,7 @@
  *   - vault.adapter.readBinary/writeBinary/exists/stat/mkdir/trashSystem
  */
 
-import { TFile } from "obsidian";
+import { TFile, TFolder } from "obsidian";
 
 interface FakeEntry {
   content: ArrayBuffer;
@@ -64,12 +64,27 @@ export class FakeVault {
   }
 
   /**
-   * The engine uses this for folder collection (collectLocalFolders).
-   * The fake holds no real folder objects -> empty list. This keeps
-   * the existing file-only tests valid and unchanged.
+   * The engine uses this for folder collection (collectLocalFolders, source #2:
+   * empty folders). Mirrors real Obsidian: returns a TFolder for EVERY folder
+   * implied by the seeded file paths' parent chains — including the sync-root
+   * and intermediate folders. Deterministic (sorted by path). Deriving from
+   * files means an "empty" folder is one seeded with a marker file the test then
+   * ignores; tests that need a truly empty folder seed a placeholder under it.
    */
-  getAllLoadedFiles(): TFile[] {
-    return [];
+  getAllLoadedFiles(): (TFile | TFolder)[] {
+    const folders = new Set<string>();
+    for (const p of this.files.keys()) {
+      let idx = p.lastIndexOf("/");
+      while (idx > 0) {
+        folders.add(p.slice(0, idx));
+        idx = p.lastIndexOf("/", idx - 1);
+      }
+    }
+    return [...folders].sort().map((path) => {
+      const f = new TFolder();
+      f.path = path;
+      return f;
+    });
   }
 
   async trash(file: TFile, _system: boolean): Promise<void> {
