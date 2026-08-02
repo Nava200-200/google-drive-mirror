@@ -52,6 +52,14 @@ npm run build    # tsc -noEmit (typecheck) + esbuild production build -> main.js
 - **Committing:** Group **logically related changes into one commit** and keep unrelated
   changes in separate commits. Before committing, **ask the user** how they want the changes
   split/grouped into commit(s) rather than lumping everything into a single commit.
+- **Git workflow:** Commit and **push directly to `main`** — do NOT create a feature branch
+  for a fix or a release (the user works straight on main).
+- **Releasing:** `npm version <x.y.z> --no-git-tag-version` runs `version-bump.mjs`, which
+  updates **four** files: `package.json`, `manifest.json`, `versions.json`, **and
+  `package-lock.json`**. Stage **all four** in the `chore: release <x.y.z>` commit (the
+  lockfile is easy to forget and had drifted stale in the past). Then tag `<x.y.z>` with **no
+  leading "v"**, `git push origin main`, and `git push origin <x.y.z>` (the tag push triggers
+  the release CI). Bug fix → patch bump.
 - The production build (`node esbuild.config.mjs production`) writes a complete,
   ready-to-install plugin directory to **`.build/`** (`main.js` + copied `manifest.json` +
   `styles.css`). To test, copy the contents of `.build/` to
