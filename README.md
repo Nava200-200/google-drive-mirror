@@ -1,5 +1,6 @@
-# Google Drive Mirror for Obsidian
+# Google Drive Mirror for Obsidian (Large File Stubbing Fork)
 
+> **Note:** This is a fork of the original [Google Drive Mirror](https://github.com/laupas/obsidian-google-drive-mirror) by Pascal Lauener. It adds a specialized feature to "stub" large binary files (like PDFs and EPUBs >10MB) into small `.gfile.md` markdown notes that link to the Google Drive preview, rather than downloading them and bloating the vault.
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-yellow?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/llaaccssaapp)
 
 Automatic **two-way sync** between your Obsidian vault (whole vault or a single subfolder) and a Google Drive folder. You can edit, add, or delete files in Obsidian **or** directly in Google Drive — both sides are reconciled.

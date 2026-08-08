@@ -1,7 +1,7 @@
 {
   "name": "obsidian-google-drive-mirror",
   "version": "0.11.3",
-  "description": "Sync multiple vault folders to multiple Google Drive folders, including Shared Drives. Each pairing syncs a subfolder or the whole vault two-way, mirrors the folder structure, and picks up files created directly in Drive.",
+  "description": "Fork of Pascal Lauener's Google Drive Mirror. Adds ability to link large binary files as MD stubs to prevent vault bloat. Original plugin provides two-way sync with Google Drive.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -16,7 +16,7 @@
     "google-drive",
     "sync"
   ],
-  "author": "Pascal Lauener",
+  "author": "Nava200-200 (Original by Pascal Lauener)",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.11.0",
