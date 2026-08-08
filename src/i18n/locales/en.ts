@@ -118,12 +118,16 @@ export const en = {
   syncGoogleDocsName: "Sync Google Workspace files (view-only)",
   syncGoogleDocsDesc:
     "Create a small note per Google Doc, Sheet, Slides and Drawing that embeds the live Google editor (editable on desktop; opens externally on mobile). The file itself is not downloaded and never uploaded back. Default: off.",
+  stubLargeFilesName: "Stub large binary files (PDFs, EPUBs)",
+  stubLargeFilesDesc:
+    "Create a small note per large binary file (>10MB) that links to preview the file in Google Drive. The file itself is not downloaded and never uploaded back. Default: off.",
 
   // ---- Google Workspace embed (gdoc-embed.ts) ----
   gdocOpenInDrive: "Open in Google Docs",
   gsheetOpenInDrive: "Open in Google Sheets",
   gslidesOpenInDrive: "Open in Google Slides",
   gdrawOpenInDrive: "Open in Google Drawings",
+  gfileOpenInDrive: "Open in Google Drive",
   gdocInvalidBlock: "Invalid Google file embed (missing document id).",
 
   // ---- Settings: auto-sync (settings-tab.ts) ----

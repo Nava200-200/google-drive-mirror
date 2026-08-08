@@ -1094,6 +1094,16 @@ export class SettingsTab extends PluginSettingTab {
         })
       );
 
+    // --- Stub large binary files ---
+    new Setting(body)
+      .setName(t("stubLargeFilesName"))
+      .setDesc(t("stubLargeFilesDesc"))
+      .addToggle((c) =>
+        c.setValue(target.stubLargeFiles).onChange(async (v) => {
+          await this.plugin.updateTarget(id, { stubLargeFiles: v });
+        })
+      );
+
     // --- Sync tree (per target) ---
     const descSetting = new Setting(body)
       .setName(t("syncTreeName"))

@@ -79,6 +79,13 @@ export interface SyncTarget {
    * the reconciler (stub files are auto-excluded from sync). Default: false.
    */
   syncGoogleDocs: boolean;
+
+  /**
+   * "Stub large binary files (PDFs, EPUBs)". When true, large files (>10MB or specific types)
+   * are represented in the vault as small stub notes (`<name>.gfile.md`) that
+   * embed a link to preview the file in Google Drive. Default: false.
+   */
+  stubLargeFiles: boolean;
 }
 
 /** Persistent plugin settings (stored in data.json). */
@@ -351,6 +358,7 @@ export function newTarget(id: string, name: string): SyncTarget {
     excludeFolders: "",
     neverDeleteRemote: false,
     syncGoogleDocs: false,
+    stubLargeFiles: false,
   };
 }
 

@@ -303,6 +303,23 @@ export class SyncEngine {
             }
             return;
           }
+
+          // If stubLargeFiles is enabled, treat large binary files (>10MB) like Google Docs:
+          // skip adding them to the remote sync store, but record them for stub generation.
+          if (this.target.stubLargeFiles && (f.size ?? 0) > 10 * 1024 * 1024) {
+            const docRel = normalizePath(this.drive.pathOf(f));
+            if (
+              !isSystemPath(docRel, this.vault.configDir) &&
+              !this.isIgnored(docRel) &&
+              !this.isExcluded(docRel) &&
+              this.extensionAllowed(docRel)
+            ) {
+              // Override mimeType so kindForMime resolves it to 'gfile'
+              docsFound.set(f.id, { ...f, mimeType: "application/x-obsidian-gfile" });
+            }
+            return;
+          }
+
           const path = normalizePath(this.drive.pathOf(f));
           if (isSystemPath(path, this.vault.configDir)) return;
           if (!this.extensionAllowed(path)) return;
@@ -514,11 +531,9 @@ export class SyncEngine {
         this.state.set(this.folderEntry(fa.path, remoteFolders.get(fa.path)));
       }
 
-      // Google Docs view-layer: (re)write `.gdoc.md` stub notes for the Docs
-      // discovered during the listing. Runs AFTER all transfers and outside the
-      // reconciler — a stub is a pointer file, never synced content, so this can
-      // never upload or delete real data.
-      if (this.target.syncGoogleDocs) {
+      // Google Docs view-layer: (re)write `.gdoc.md` and `.gfile.md` stub notes
+      // for the Docs and large files discovered during the listing.
+      if (this.target.syncGoogleDocs || this.target.stubLargeFiles) {
         await this.writeGdocStubs(docsFound, summary);
       }
 
@@ -913,6 +928,10 @@ export class SyncEngine {
       if (!stat) continue; // vanished between listing and stat
       const mtimeMs = stat.mtime;
       const size = stat.size;
+
+      // If stubLargeFiles is enabled, exclude large binary files (>10MB) from the sync tree
+      // entirely, matching the remote-side exclusion. They will just drop out of the base.
+      if (this.target.stubLargeFiles && size > 10 * 1024 * 1024) continue;
 
       // Hash cache: mtime+size unchanged vs. the base -> reuse the stored
       // MD5, do NOT read the file.

@@ -32,7 +32,7 @@ import { t, MessageKey } from "./i18n";
 export const GDOC_BLOCK_LANG = "gdoc";
 
 /** A supported native Google Workspace file kind. */
-export type GoogleFileKind = "doc" | "sheet" | "slide" | "drawing";
+export type GoogleFileKind = "doc" | "sheet" | "slide" | "drawing" | "gfile";
 
 /** Per-kind metadata: MIME type, editor URL, stub suffix, i18n labels. */
 interface KindMeta {
@@ -80,6 +80,13 @@ export const KIND_META: Record<GoogleFileKind, KindMeta> = {
     editUrl: (id) => `https://docs.google.com/drawings/d/${id}/edit`,
     openLabelKey: "gdrawOpenInDrive",
     fallbackPrefix: "google-drawing",
+  },
+  gfile: {
+    mime: "application/x-obsidian-gfile", // Dummy mime for large binary files
+    suffix: ".gfile.md",
+    editUrl: (id) => `https://drive.google.com/file/d/${id}/view`,
+    openLabelKey: "gfileOpenInDrive",
+    fallbackPrefix: "drive-file",
   },
 };
 
@@ -223,7 +230,7 @@ export function parseGdocBlock(source: string): StubData | null {
 /** Maps a raw kind string to a supported kind (defaults to `doc`). */
 function normalizeKind(raw: string | undefined): GoogleFileKind {
   const v = raw?.trim();
-  if (v === "sheet" || v === "slide" || v === "drawing") return v;
+  if (v === "sheet" || v === "slide" || v === "drawing" || v === "gfile") return v;
   return "doc";
 }
 
