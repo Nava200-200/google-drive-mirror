@@ -307,7 +307,7 @@ export class SyncEngine {
           // If stubLargeFiles is enabled, treat large binary files (>10MB) like Google Docs:
           // skip adding them to the remote sync store, but record them for stub generation.
           const thresholdStr = window.localStorage.getItem(`gdm-stub-threshold-${this.target.id}`);
-          const thresholdMB = thresholdStr ? parseInt(thresholdStr, 10) : 10;
+          const thresholdMB = thresholdStr ? parseFloat(thresholdStr) : 10;
           if (this.target.stubLargeFiles && (f.size ?? 0) > thresholdMB * 1024 * 1024) {
             const docRel = normalizePath(this.drive.pathOf(f));
             if (
@@ -934,7 +934,7 @@ export class SyncEngine {
       // If stubLargeFiles is enabled, exclude large binary files (>10MB) from the sync tree
       // entirely, matching the remote-side exclusion. They will just drop out of the base.
       const thresholdStr = window.localStorage.getItem(`gdm-stub-threshold-${this.target.id}`);
-      const thresholdMB = thresholdStr ? parseInt(thresholdStr, 10) : 10;
+      const thresholdMB = thresholdStr ? parseFloat(thresholdStr) : 10;
       if (this.target.stubLargeFiles && size > thresholdMB * 1024 * 1024) continue;
 
       // Hash cache: mtime+size unchanged vs. the base -> reuse the stored

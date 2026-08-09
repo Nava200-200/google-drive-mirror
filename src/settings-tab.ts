@@ -1107,18 +1107,20 @@ export class SettingsTab extends PluginSettingTab {
     // --- Stub large binary files threshold ---
     const defaultThreshold = 10;
     const storedThreshold = window.localStorage.getItem(`gdm-stub-threshold-${id}`);
-    const currentThreshold = storedThreshold ? parseInt(storedThreshold, 10) : defaultThreshold;
+    const currentThreshold = storedThreshold ? parseFloat(storedThreshold) : defaultThreshold;
 
     new Setting(body)
       .setName("Stub Large Files Threshold (MB)")
       .setDesc("Device-specific setting. Files larger than this (in MB) will be stubbed if the feature is enabled above.")
-      .addSlider((slider) => {
-        slider
-          .setLimits(1, 100, 1)
-          .setValue(currentThreshold)
-          .setDynamicTooltip()
+      .addText((text) => {
+        text
+          .setPlaceholder("e.g. 10 or 0.5")
+          .setValue(currentThreshold.toString())
           .onChange((value) => {
-            window.localStorage.setItem(`gdm-stub-threshold-${id}`, value.toString());
+            const parsed = parseFloat(value);
+            if (!isNaN(parsed) && parsed > 0) {
+              window.localStorage.setItem(`gdm-stub-threshold-${id}`, parsed.toString());
+            }
           });
       });
 
