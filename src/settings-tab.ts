@@ -1104,6 +1104,24 @@ export class SettingsTab extends PluginSettingTab {
         })
       );
 
+    // --- Stub large binary files threshold ---
+    const defaultThreshold = 10;
+    const storedThreshold = window.localStorage.getItem(`gdm-stub-threshold-${id}`);
+    const currentThreshold = storedThreshold ? parseInt(storedThreshold, 10) : defaultThreshold;
+
+    new Setting(body)
+      .setName("Stub Large Files Threshold (MB)")
+      .setDesc("Device-specific setting. Files larger than this (in MB) will be stubbed if the feature is enabled above.")
+      .addSlider((slider) => {
+        slider
+          .setLimits(1, 100, 1)
+          .setValue(currentThreshold)
+          .setDynamicTooltip()
+          .onChange((value) => {
+            window.localStorage.setItem(`gdm-stub-threshold-${id}`, value.toString());
+          });
+      });
+
     // --- Sync tree (per target) ---
     const descSetting = new Setting(body)
       .setName(t("syncTreeName"))
