@@ -364,3 +364,233 @@
   color: var(--text-error);
   padding: 0.5rem;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Config tab — .obsidian sync tree
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Outer wrapper: card-like border, tree lives inside */
+.gds-cfg-obsidian-tree {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  margin: 0.5rem 0 1rem;
+  overflow: hidden;
+  font-size: var(--font-ui-small);
+}
+
+/* Root ".obsidian/" header row */
+.gds-cfg-tree-root {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-weight: var(--font-semibold);
+}
+
+/* Indented children area */
+.gds-cfg-tree-children {
+  padding: 0.25rem 0;
+}
+
+/* Section header (Config files / plugins/) */
+.gds-cfg-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem 0.2rem 1.2rem;
+  color: var(--text-muted);
+  font-weight: var(--font-medium);
+  font-size: var(--font-ui-smaller);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Section body (file rows, plugin rows) */
+.gds-cfg-section-body {
+  padding: 0 0.5rem 0.4rem 2rem;
+}
+
+/* Individual file row (for root *.json files) */
+.gds-cfg-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  min-height: 1.8rem;
+}
+.gds-cfg-file-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  margin: 0;
+  cursor: pointer;
+}
+.gds-cfg-file-row label {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  overflow: hidden;
+}
+.gds-cfg-file-name {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+.gds-cfg-file-desc {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Extra (uncurated) files appear slightly dimmer */
+.gds-cfg-file-row--extra .gds-cfg-file-name {
+  color: var(--text-muted);
+}
+
+/* Master "sync all plugins" row */
+.gds-cfg-master-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.75rem 0.3rem 1.2rem;
+}
+.gds-cfg-master-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  margin: 0;
+  cursor: pointer;
+}
+.gds-cfg-master-row label {
+  cursor: pointer;
+}
+.gds-cfg-master-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+/* Scrollable plugin list (up to ~10 rows before scroll) */
+.gds-cfg-plugins-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 0 0.5rem 0.4rem 2rem;
+  border-top: 1px solid var(--background-modifier-border-hover);
+  margin-top: 0.1rem;
+}
+
+/* Individual plugin row */
+.gds-cfg-plugin-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  min-height: 1.8rem;
+}
+.gds-cfg-plugin-info {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.gds-cfg-plugin-name {
+  font-weight: var(--font-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gds-cfg-plugin-id {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-family: var(--font-monospace);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gds-cfg-plugin-exclude {
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+.gds-cfg-exclude-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+  user-select: none;
+}
+.gds-cfg-exclude-label:hover {
+  color: var(--text-normal);
+}
+
+/* Sync-state indicator dot */
+.gds-cfg-state-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--background-modifier-border);
+  display: inline-block;
+  cursor: default;
+}
+/* Green: synced to Drive */
+.gds-cfg-state-dot--active {
+  background: var(--color-green, #2ecc71);
+}
+/* Orange: will sync on next run (locally selected, not yet in Drive) */
+.gds-cfg-state-dot--pending {
+  background: var(--color-orange, #f39c12);
+}
+
+/* Advanced collapsible (own data.json property tree) */
+.gds-cfg-advanced {
+  border-top: 1px solid var(--background-modifier-border);
+  margin: 0.25rem 0 0;
+}
+.gds-cfg-advanced > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  list-style: none;
+}
+.gds-cfg-advanced > summary::before {
+  content: "▶";
+  font-size: 0.65em;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.gds-cfg-advanced[open] > summary::before {
+  transform: rotate(90deg);
+}
+.gds-cfg-advanced-hint {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+.gds-cfg-advanced-body {
+  padding: 0 0.75rem 0.5rem 1.5rem;
+}
+
+/* Muted/dim label variant */
+.gds-cfg-label--dim {
+  color: var(--text-muted);
+}
+/* Section label variant */
+.gds-cfg-label--section {
+  color: var(--text-muted);
+}
+
+/* Icon span next to labels */
+.gds-cfg-icon {
+  flex: 0 0 auto;
+  font-size: 0.9em;
+}
+
+/* Empty state text */
+.gds-cfg-empty {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  padding: 0.4rem 0;
+  font-style: italic;
+}

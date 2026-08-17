@@ -190,6 +190,22 @@ export interface PluginSettings {
    * Device-local.
    */
   configSyncPluginRemoveIds: string[];
+
+  /**
+   * Explicit exclusion list for plugin settings sync. Any plugin id in this list
+   * is NEVER synced regardless of `configSyncPluginIds` or Drive state.
+   * Replaces the per-device mental model with a stable shared exclusion list.
+   * Device-local.
+   */
+  configSyncPluginExcludeIds: string[];
+
+  /**
+   * Opt-in list of root `.obsidian/*.json` file NAMES (not paths) to include in
+   * config sync, e.g. `["app.json", "appearance.json", "hotkeys.json"]`.
+   * These are synced alongside plugin `data.json` files in the same Drive folder,
+   * at path `.obsidian/<name>`. Device-local (each device opts in independently).
+   */
+  configSyncRootFiles: string[];
 }
 
 /**
@@ -208,7 +224,68 @@ export const CONFIG_SYNC_DEVICE_LOCAL_KEYS = [
   "configIgnorePaths",
   "configSyncPluginIds",
   "configSyncPluginRemoveIds",
+  "configSyncPluginExcludeIds",
+  "configSyncRootFiles",
 ] as const;
+
+/**
+ * Root-level `.obsidian/*.json` file names that are NEVER synced because they
+ * are device-specific (layout, open tabs, etc.). Used to filter candidates in
+ * the UI and the sync engine.
+ */
+export const CONFIG_SYNC_ROOT_NEVER_SYNC = [
+  "workspace.json",
+  "workspace-mobile.json",
+  "workspaces.json",
+  "webviewer.json",
+  "surfing-bookmark.json",
+] as const;
+
+/**
+ * Root `.obsidian/*.json` files that are safe to sync and are shown in the UI
+ * tree with friendly labels. Ordered by importance.
+ */
+export const CONFIG_SYNC_ROOT_CANDIDATES: Array<{
+  name: string;
+  label: string;
+  desc: string;
+}> = [
+  {
+    name: "app.json",
+    label: "App settings",
+    desc: "Core editor behavior, spellcheck, default view modes",
+  },
+  {
+    name: "appearance.json",
+    label: "Appearance",
+    desc: "Theme, accent color, font choices",
+  },
+  {
+    name: "hotkeys.json",
+    label: "Hotkeys",
+    desc: "Custom keyboard shortcut assignments",
+  },
+  {
+    name: "community-plugins.json",
+    label: "Enabled plugins list",
+    desc: "Which community plugins are enabled/disabled",
+  },
+  {
+    name: "core-plugins.json",
+    label: "Core plugins",
+    desc: "Built-in plugin on/off state",
+  },
+  {
+    name: "types.json",
+    label: "Property types",
+    desc: "Frontmatter property type definitions",
+  },
+  {
+    name: "graph.json",
+    label: "Graph view",
+    desc: "Graph layout, colors, filters",
+  },
+];
 
 /**
  * State of a file (or folder) at the last successful sync —
@@ -335,6 +412,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   configIgnorePaths: ["targets[].excludeFolders"],
   configSyncPluginIds: [],
   configSyncPluginRemoveIds: [],
+  configSyncPluginExcludeIds: [],
+  configSyncRootFiles: [],
 };
 
 /** Builds a fresh, empty sync target with sensible defaults. */

@@ -450,34 +450,15 @@ export class SettingsTab extends PluginSettingTab {
         c.setValue(s.configSyncEnabled).onChange(async (v) => {
           s.configSyncEnabled = v;
           await this.plugin.saveSettings();
-          this.display(); // show/hide the rest of the section
+          this.display();
         })
       );
 
-    // The folder / passphrase / sync controls only matter when enabled.
     if (!s.configSyncEnabled) return;
 
-    // Properties of OUR data.json to sync (collapsible checkbox tree).
-    this.renderConfigPropsTree(containerEl, s);
+    // ── Drive Folder ─────────────────────────────────────────────────────────
+    new Setting(containerEl).setName("Drive folder").setHeading();
 
-    // Also sync OTHER plugins' settings (whole-file encrypted).
-    new Setting(containerEl)
-      .setName(t("configSyncOtherPluginsName"))
-      .setDesc(t("configSyncOtherPluginsDesc"))
-      .addToggle((c) =>
-        c.setValue(s.configSyncOtherPlugins).onChange(async (v) => {
-          s.configSyncOtherPlugins = v;
-          await this.plugin.saveSettings();
-          this.display(); // show/hide the per-plugin list
-        })
-      );
-
-    // Per-plugin selection (only when the toggle is on).
-    if (s.configSyncOtherPlugins) {
-      this.renderConfigPluginList(containerEl, s);
-    }
-
-    // Dedicated Drive folder for the config file.
     new Setting(containerEl)
       .setName(t("configSyncFolderName"))
       .setDesc(t("configSyncFolderDesc"))
@@ -485,7 +466,6 @@ export class SettingsTab extends PluginSettingTab {
         c.setPlaceholder(t("configSyncFolderPlaceholder"))
           .setValue(s.configDriveFolderName || s.configDriveFolderId)
           .onChange(async (v) => {
-            // Free-text id entry; validated via the Check button.
             s.configDriveFolderId = v.trim();
             await this.plugin.saveSettings();
           });
@@ -538,8 +518,9 @@ export class SettingsTab extends PluginSettingTab {
           })
       );
 
-    // Per-device passphrase (in-memory only). Establishing it validates against
-    // the folder's verifier blob (or writes one on first use).
+    // ── Encryption ───────────────────────────────────────────────────────────
+    new Setting(containerEl).setName("Encryption").setHeading();
+
     let pendingPass = "";
     new Setting(containerEl)
       .setName(t("configSyncPassphraseName"))
@@ -577,7 +558,14 @@ export class SettingsTab extends PluginSettingTab {
           })
       );
 
-    // Sync button — enabled only once a passphrase is set this session.
+    // ── What to Sync — .obsidian tree ────────────────────────────────────────
+    new Setting(containerEl).setName("What to sync").setHeading();
+
+    this.renderConfigObsidianTree(containerEl, s);
+
+    // ── Actions ──────────────────────────────────────────────────────────────
+    new Setting(containerEl).setName("Actions").setHeading();
+
     new Setting(containerEl)
       .setName(t("configSyncSyncButton"))
       .addButton((b) => {
@@ -589,16 +577,18 @@ export class SettingsTab extends PluginSettingTab {
         this.refreshConfigSyncButton();
       });
 
-    // Live status line (same look as note sync).
     this.configStatusEl = containerEl.createDiv({ cls: "gds-status" });
 
-    // Config-sync log: opens the SAME live modal, bound to the config log.
     new Setting(containerEl)
       .setName(t("syncLogName"))
       .setDesc(t("syncLogDesc"))
       .addButton((b) =>
         b.setButtonText(t("showLogButton")).onClick(() => {
-          new SyncLogModal(this.app, this.plugin, this.plugin.configStatus).open();
+          new SyncLogModal(
+            this.app,
+            this.plugin,
+            this.plugin.configStatus
+          ).open();
         })
       )
       .addExtraButton((b) =>
@@ -608,7 +598,6 @@ export class SettingsTab extends PluginSettingTab {
           .onClick(() => this.plugin.configStatus.clearLog())
       );
 
-    // Subscribe live to the config status (status line + button state).
     this.configUnsubscribe = this.plugin.configStatus.subscribe(() => {
       this.renderStatusInto(this.configStatusEl, this.plugin.configStatus);
       this.refreshConfigSyncButton();
@@ -625,9 +614,257 @@ export class SettingsTab extends PluginSettingTab {
   }
 
   /**
-   * "Properties to sync" — a collapsible checkbox tree of this plugin's own
-   * data.json paths. Checked = sync; unchecked = keep on this device only
-   * (added to `configIgnorePaths`). Async: reads data.json, then fills the tree.
+   * Renders the `.obsidian` file tree for the Config tab "What to sync" section.
+   *
+   * Structure:
+   *   📁 .obsidian/
+   *     📄 Config files     ← opt-in checkboxes for root *.json
+   *     📁 plugins/         ← master toggle + per-plugin exclude rows
+   *     ⚙️ Advanced ▶       ← collapsible: own data.json property tree
+   */
+  private renderConfigObsidianTree(
+    containerEl: HTMLElement,
+    s: PluginSettings
+  ): void {
+    const treeWrap = containerEl.createDiv({ cls: "gds-cfg-obsidian-tree" });
+
+    // Root folder label row
+    const rootRow = treeWrap.createDiv({ cls: "gds-cfg-tree-root" });
+    rootRow.createSpan({ cls: "gds-cfg-icon", text: "📁" });
+    rootRow.createSpan({
+      cls: "gds-cfg-label gds-cfg-label--dim",
+      text: ".obsidian/",
+    });
+
+    const childWrap = treeWrap.createDiv({ cls: "gds-cfg-tree-children" });
+
+    // ── Section 1: Root .obsidian/*.json files (opt-in) ─────────────────────
+    const rootFilesHeader = childWrap.createDiv({
+      cls: "gds-cfg-section-header",
+    });
+    rootFilesHeader.createSpan({ cls: "gds-cfg-icon", text: "📄" });
+    rootFilesHeader.createSpan({
+      cls: "gds-cfg-label gds-cfg-label--section",
+      text: "Config files",
+    });
+
+    const rootFilesContainer = childWrap.createDiv({
+      cls: "gds-cfg-section-body",
+    });
+
+    void (async () => {
+      const { CONFIG_SYNC_ROOT_CANDIDATES } = await import("./types");
+      const existing = new Set(
+        await this.plugin.configSync.listSyncableRootFiles()
+      );
+      const selected = new Set(s.configSyncRootFiles);
+
+      if (existing.size === 0) {
+        rootFilesContainer.createDiv({
+          cls: "gds-cfg-empty",
+          text: "No config files found in .obsidian/",
+        });
+        return;
+      }
+
+      for (const candidate of CONFIG_SYNC_ROOT_CANDIDATES) {
+        if (!existing.has(candidate.name)) continue;
+        const isChecked = selected.has(candidate.name);
+
+        const row = rootFilesContainer.createDiv({ cls: "gds-cfg-file-row" });
+        const cb = row.createEl("input", { type: "checkbox" });
+        cb.checked = isChecked;
+        cb.id = `cfg-root-${candidate.name}`;
+        cb.onchange = async () => {
+          const next = new Set(s.configSyncRootFiles);
+          if (cb.checked) next.add(candidate.name);
+          else next.delete(candidate.name);
+          s.configSyncRootFiles = [...next];
+          await this.plugin.saveSettings();
+          dot.classList.toggle("gds-cfg-state-dot--active", cb.checked);
+          dot.title = cb.checked ? "Will sync" : "Not synced";
+        };
+
+        const label = row.createEl("label", { attr: { for: cb.id } });
+        label.createSpan({ cls: "gds-cfg-file-name", text: candidate.name });
+        label.createSpan({ cls: "gds-cfg-file-desc", text: candidate.desc });
+
+        const dot = row.createSpan({ cls: "gds-cfg-state-dot" });
+        dot.title = isChecked ? "Will sync" : "Not synced";
+        dot.classList.toggle("gds-cfg-state-dot--active", isChecked);
+      }
+
+      // Extra .json files on disk not in the curated list
+      const curated = new Set(CONFIG_SYNC_ROOT_CANDIDATES.map((c) => c.name));
+      const extras = [...existing].filter((n) => !curated.has(n));
+      for (const name of extras.sort()) {
+        const isChecked = selected.has(name);
+        const row = rootFilesContainer.createDiv({
+          cls: "gds-cfg-file-row gds-cfg-file-row--extra",
+        });
+        const cb = row.createEl("input", { type: "checkbox" });
+        cb.checked = isChecked;
+        cb.id = `cfg-root-extra-${name}`;
+        cb.onchange = async () => {
+          const next = new Set(s.configSyncRootFiles);
+          if (cb.checked) next.add(name);
+          else next.delete(name);
+          s.configSyncRootFiles = [...next];
+          await this.plugin.saveSettings();
+        };
+        const label = row.createEl("label", { attr: { for: cb.id } });
+        label.createSpan({ cls: "gds-cfg-file-name", text: name });
+      }
+    })();
+
+    // ── Section 2: plugins/ folder ───────────────────────────────────────────
+    const pluginsHeader = childWrap.createDiv({ cls: "gds-cfg-section-header" });
+    pluginsHeader.createSpan({ cls: "gds-cfg-icon", text: "📁" });
+    pluginsHeader.createSpan({
+      cls: "gds-cfg-label gds-cfg-label--section",
+      text: "plugins/",
+    });
+
+    // Master "sync all plugins" toggle
+    const masterRow = childWrap.createDiv({ cls: "gds-cfg-master-row" });
+    const masterCb = masterRow.createEl("input", { type: "checkbox" });
+    masterCb.checked = s.configSyncOtherPlugins;
+    masterCb.id = "cfg-plugins-master";
+    masterCb.onchange = async () => {
+      s.configSyncOtherPlugins = masterCb.checked;
+      await this.plugin.saveSettings();
+      this.display();
+    };
+    const masterLabel = masterRow.createEl("label", {
+      attr: { for: "cfg-plugins-master" },
+    });
+    masterLabel.createSpan({ text: "Sync all plugin settings" });
+    masterLabel.createSpan({
+      cls: "gds-cfg-master-hint",
+      text: s.configSyncOtherPlugins
+        ? " — uncheck specific plugins below to exclude them"
+        : " — enable to sync other plugins' data.json files",
+    });
+
+    if (s.configSyncOtherPlugins) {
+      const pluginsListEl = childWrap.createDiv({
+        cls: "gds-cfg-plugins-list",
+      });
+
+      void (async () => {
+        const [plugins, inDrive] = await Promise.all([
+          this.plugin.configSync.listInstalledPlugins(),
+          this.plugin.configSync.listSyncedPluginIds(),
+        ]);
+
+        pluginsListEl.empty();
+
+        if (plugins.length === 0) {
+          pluginsListEl.createDiv({
+            cls: "gds-cfg-empty",
+            text: t("configSyncPluginsEmpty"),
+          });
+          return;
+        }
+
+        const excluded = new Set(s.configSyncPluginExcludeIds);
+
+        for (const { id, name } of plugins) {
+          const isSynced = !excluded.has(id);
+          const isInDrive = inDrive.has(id);
+
+          const row = pluginsListEl.createDiv({ cls: "gds-cfg-plugin-row" });
+
+          // Sync-state dot: green=synced, orange=pending, grey=excluded
+          const dot = row.createSpan({ cls: "gds-cfg-state-dot" });
+          dot.classList.toggle(
+            "gds-cfg-state-dot--active",
+            isSynced && isInDrive
+          );
+          dot.classList.toggle(
+            "gds-cfg-state-dot--pending",
+            isSynced && !isInDrive
+          );
+          dot.title = !isSynced
+            ? "Excluded — will not sync"
+            : isInDrive
+            ? "Synced to Drive"
+            : "Will sync on next run";
+
+          // Plugin name + id
+          const info = row.createDiv({ cls: "gds-cfg-plugin-info" });
+          info.createSpan({ cls: "gds-cfg-plugin-name", text: name });
+          if (name !== id)
+            info.createSpan({ cls: "gds-cfg-plugin-id", text: id });
+
+          // Exclude checkbox (checked = excluded from sync)
+          const excl = row.createEl("input", { type: "checkbox" });
+          excl.checked = !isSynced;
+          excl.title = "Exclude from sync";
+          excl.classList.add("gds-cfg-plugin-exclude");
+          excl.onchange = async () => {
+            const next = new Set(s.configSyncPluginExcludeIds);
+            if (excl.checked) {
+              next.add(id);
+              if (!s.configSyncPluginRemoveIds.includes(id))
+                s.configSyncPluginRemoveIds = [
+                  ...s.configSyncPluginRemoveIds,
+                  id,
+                ];
+            } else {
+              next.delete(id);
+              s.configSyncPluginRemoveIds = s.configSyncPluginRemoveIds.filter(
+                (x) => x !== id
+              );
+              if (!inDrive.has(id) && !s.configSyncPluginIds.includes(id))
+                s.configSyncPluginIds = [...s.configSyncPluginIds, id];
+            }
+            s.configSyncPluginExcludeIds = [...next];
+            await this.plugin.saveSettings();
+            dot.classList.toggle(
+              "gds-cfg-state-dot--active",
+              !excl.checked && isInDrive
+            );
+            dot.classList.toggle(
+              "gds-cfg-state-dot--pending",
+              !excl.checked && !isInDrive
+            );
+            dot.title = excl.checked
+              ? "Excluded — will not sync"
+              : isInDrive
+              ? "Synced to Drive"
+              : "Will sync on next run";
+          };
+
+          const exclLabel = row.createEl("label", {
+            cls: "gds-cfg-exclude-label",
+            text: "Exclude",
+          });
+          exclLabel.onclick = () => {
+            excl.checked = !excl.checked;
+            excl.dispatchEvent(new Event("change"));
+          };
+        }
+      })();
+    }
+
+    // ── Advanced: own data.json property tree ────────────────────────────────
+    const advDet = childWrap.createEl("details", { cls: "gds-cfg-advanced" });
+    const advSum = advDet.createEl("summary");
+    advSum.createSpan({ cls: "gds-cfg-icon", text: "⚙️" });
+    advSum.createSpan({
+      cls: "gds-cfg-label gds-cfg-label--dim",
+      text: " Advanced: this plugin's own sync properties",
+    });
+
+    const advBody = advDet.createDiv({ cls: "gds-cfg-advanced-body" });
+    this.renderConfigPropsTree(advBody, s);
+  }
+
+  /**
+   * \"Properties to sync\" — a checkbox tree of this plugin's own data.json paths.
+   * Checked = sync; unchecked = exclude (added to `configIgnorePaths`).
+   * Rendered inside the Advanced collapsible of the .obsidian tree.
    */
   private renderConfigPropsTree(
     containerEl: HTMLElement,
@@ -708,73 +945,6 @@ export class SettingsTab extends PluginSettingTab {
         }
       };
       renderLevel(treeEl, "");
-    })();
-  }
-
-  /**
-   * Per-plugin selection list (only shown when "sync other plugins" is on).
-   *
-   * A plugin is "checked" when it's part of the effective selection:
-   *   (already synced in Drive) ∪ (ticked here), minus (unticked here).
-   * This makes a plugin synced from ANOTHER device show as checked here too
-   * (its file is in the shared Drive folder), which was the missing state.
-   * Ticking/unticking records intent; the next "Sync settings now" uploads new
-   * ones and trashes deselected ones. Async: lists installed + Drive-synced,
-   * then fills the rows.
-   */
-  private renderConfigPluginList(
-    containerEl: HTMLElement,
-    s: PluginSettings
-  ): void {
-    new Setting(containerEl)
-      .setName(t("configSyncPluginsListName"))
-      .setDesc(t("configSyncPluginsListDesc"))
-      .setHeading();
-    const listEl = containerEl.createDiv({ cls: "gds-cfg-plugins" });
-
-    void (async () => {
-      const [plugins, inDrive] = await Promise.all([
-        this.plugin.configSync.listInstalledPlugins(),
-        this.plugin.configSync.listSyncedPluginIds(),
-      ]);
-      listEl.empty();
-      if (plugins.length === 0) {
-        listEl.createDiv({
-          cls: "gds-tree-empty",
-          text: t("configSyncPluginsEmpty"),
-        });
-        return;
-      }
-      // Effective checked state for a plugin id.
-      const isChecked = (id: string) =>
-        !s.configSyncPluginRemoveIds.includes(id) &&
-        (inDrive.has(id) || s.configSyncPluginIds.includes(id));
-
-      for (const { id, name } of plugins) {
-        new Setting(listEl)
-          .setName(name)
-          .setDesc(id)
-          .addToggle((c) =>
-            c.setValue(isChecked(id)).onChange(async (v) => {
-              const include = new Set(s.configSyncPluginIds);
-              const remove = new Set(s.configSyncPluginRemoveIds);
-              if (v) {
-                // Tick → include; cancel any pending removal.
-                remove.delete(id);
-                if (!inDrive.has(id)) include.add(id);
-                else include.delete(id); // already in Drive → no include needed
-              } else {
-                // Untick → drop include; if it's in Drive, mark pending removal.
-                include.delete(id);
-                if (inDrive.has(id)) remove.add(id);
-                else remove.delete(id);
-              }
-              s.configSyncPluginIds = [...include];
-              s.configSyncPluginRemoveIds = [...remove];
-              await this.plugin.saveSettings();
-            })
-          );
-      }
     })();
   }
 

@@ -19,7 +19,11 @@ import {
   EncSentinel,
 } from "./crypto-box";
 import { md5Hex } from "./md5";
-import { PluginSettings, CONFIG_SYNC_DEVICE_LOCAL_KEYS } from "./types";
+import {
+  PluginSettings,
+  CONFIG_SYNC_DEVICE_LOCAL_KEYS,
+  CONFIG_SYNC_ROOT_NEVER_SYNC,
+} from "./types";
 import {
   deleteAtPath,
   getAtPath,
@@ -47,6 +51,14 @@ const VERIFIER_PATH = `${CONFIG_DIR}/config-sync-verifier.json`;
  */
 function pluginDataRelPath(pluginId: string): string {
   return `${CONFIG_DIR}/plugins/${pluginId}/${DATA_FILE}`;
+}
+
+/**
+ * `.obsidian`-relative path for a root config file, e.g. `app.json` →
+ * `.obsidian/app.json`. Drive path and state key are identical to the local path.
+ */
+function rootFileRelPath(name: string): string {
+  return `${CONFIG_DIR}/${name}`;
 }
 
 /**
@@ -210,11 +222,13 @@ export class ConfigSyncEngine {
   /**
    * Builds the list of local config files to sync: always this plugin's own
    * data.json, plus (when `configSyncOtherPlugins`) every other plugin's
-   * data.json present on this device.
+   * data.json not in the exclusion list present on this device, plus any
+   * root `.obsidian/*.json` files the user has opted into.
    */
   private async collectLocalFiles(
     remotePluginIds: ReadonlySet<string>
   ): Promise<LocalConfigFile[]> {
+    const s = this.getSettings();
     const files: LocalConfigFile[] = [
       {
         relPath: pluginDataRelPath(this.pluginId),
@@ -223,15 +237,30 @@ export class ConfigSyncEngine {
       },
     ];
 
-    if (!this.getSettings().configSyncOtherPlugins) return files;
+    // --- Root .obsidian files (opt-in) ---
+    const neverSync = new Set<string>(CONFIG_SYNC_ROOT_NEVER_SYNC);
+    for (const name of s.configSyncRootFiles) {
+      if (neverSync.has(name)) continue; // safety guard
+      const adapterPath = `${this.vault.configDir}/${name}`;
+      if (await this.vault.adapter.exists(adapterPath)) {
+        files.push({
+          relPath: rootFileRelPath(name),
+          adapterPath,
+          isOwn: false,
+        });
+      }
+    }
+
+    if (!s.configSyncOtherPlugins) return files;
 
     // Effective selection = (already in Drive) ∪ (explicitly ticked here),
-    // minus (explicitly unticked here, pending removal). "In Drive" makes a
-    // plugin synced from ANOTHER device sync from this one too, without needing
-    // the local include list — the fix for the missing device-2 checkboxes.
-    const included = new Set(this.getSettings().configSyncPluginIds);
+    // minus excluded IDs (new explicit exclusion list) and pending removals.
+    const included = new Set(s.configSyncPluginIds);
     for (const id of remotePluginIds) included.add(id);
-    const removing = new Set(this.getSettings().configSyncPluginRemoveIds);
+    const excluding = new Set([
+      ...s.configSyncPluginExcludeIds,
+      ...s.configSyncPluginRemoveIds,
+    ]);
 
     // Enumerate plugin folders and include each selected + installed data.json.
     try {
@@ -241,7 +270,8 @@ export class ConfigSyncEngine {
       for (const folderPath of listing.folders) {
         const id = folderPath.split("/").pop();
         if (!id || id === this.pluginId) continue;
-        if (!included.has(id) || removing.has(id)) continue; // not selected
+        if (excluding.has(id)) continue; // explicitly excluded
+        if (!included.has(id)) continue; // not selected
         const adapterPath = `${dir}/${id}/${DATA_FILE}`;
         if (await this.vault.adapter.exists(adapterPath)) {
           files.push({
@@ -259,8 +289,9 @@ export class ConfigSyncEngine {
 
   /**
    * Lists installed OTHER plugins with a display name (from their manifest.json,
-   * falling back to the folder id). Public API only — no `app.plugins`. Used by
-   * the settings UI to render the per-plugin checkboxes.
+   * falling back to the folder id). Excludes plugins in `configSyncPluginExcludeIds`
+   * so excluded plugins don't appear in the sync tree. Public API only — no `app.plugins`.
+   * Used by the settings UI to render the per-plugin tree rows.
    */
   async listInstalledPlugins(): Promise<{ id: string; name: string }[]> {
     const out: { id: string; name: string }[] = [];
@@ -290,6 +321,28 @@ export class ConfigSyncEngine {
     }
     out.sort((a, b) => a.name.localeCompare(b.name));
     return out;
+  }
+
+  /**
+   * Returns the list of root `.obsidian` config file names that actually exist
+   * on this device and are candidates for sync (i.e. not in the never-sync list).
+   * Used by the settings UI tree to show only real files.
+   */
+  async listSyncableRootFiles(): Promise<string[]> {
+    const neverSync = new Set<string>(CONFIG_SYNC_ROOT_NEVER_SYNC);
+    const found: string[] = [];
+    try {
+      const listing = await this.vault.adapter.list(this.vault.configDir);
+      for (const filePath of listing.files) {
+        const name = filePath.split("/").pop();
+        if (!name || !name.endsWith(".json")) continue;
+        if (neverSync.has(name)) continue;
+        found.push(name);
+      }
+    } catch (e) {
+      log.warn("Config sync: cannot list root config files:", e);
+    }
+    return found.sort();
   }
 
   /**
