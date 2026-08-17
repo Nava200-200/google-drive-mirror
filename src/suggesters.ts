@@ -39,6 +39,12 @@ export class LocalFolderSuggest extends AbstractInputSuggest<TFolder> {
   getSuggestions(query: string): TFolder[] {
     const lower = query.toLowerCase();
     const folders: TFolder[] = [];
+    
+    // Explicitly allow .obsidian if requested (since getAllLoadedFiles normally hides it)
+    if (".obsidian".includes(lower)) {
+      folders.push({ path: ".obsidian", name: ".obsidian", parent: null, vault: this.app.vault } as unknown as TFolder);
+    }
+
     // Iterate over all folders in the vault (incl. vault root).
     for (const file of this.app.vault.getAllLoadedFiles()) {
       if (file instanceof TFolder && file.path.toLowerCase().contains(lower)) {

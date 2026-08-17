@@ -294,7 +294,7 @@ export class SyncEngine {
             if (this.target.syncGoogleDocs && kindForMime(f.mimeType)) {
               const docRel = normalizePath(this.drive.pathOf(f));
               if (
-                !isSystemPath(docRel, this.vault.configDir) &&
+                !isSystemPath(docRel, this.vault.configDir, this.active?.localFolder ?? "") &&
                 !this.isIgnored(docRel) &&
                 !this.isExcluded(docRel)
               ) {
@@ -309,7 +309,7 @@ export class SyncEngine {
           if (this.target.stubLargeFiles && (f.size ?? 0) > 10 * 1024 * 1024) {
             const docRel = normalizePath(this.drive.pathOf(f));
             if (
-              !isSystemPath(docRel, this.vault.configDir) &&
+              !isSystemPath(docRel, this.vault.configDir, this.active?.localFolder ?? "") &&
               !this.isIgnored(docRel) &&
               !this.isExcluded(docRel) &&
               this.extensionAllowed(docRel)
@@ -321,7 +321,7 @@ export class SyncEngine {
           }
 
           const path = normalizePath(this.drive.pathOf(f));
-          if (isSystemPath(path, this.vault.configDir)) return;
+          if (isSystemPath(path, this.vault.configDir, this.active?.localFolder ?? "")) return;
           if (!this.extensionAllowed(path)) return;
           if (this.isIgnored(path)) return;
           if (this.isExcluded(path)) return;
@@ -360,7 +360,7 @@ export class SyncEngine {
       const collidingFolderPaths = new Set<string>();
       for (const folder of listing.folders) {
         const path = normalizePath(folder.relativePath);
-        if (isSystemPath(path, this.vault.configDir)) continue;
+        if (isSystemPath(path, this.vault.configDir, this.active?.localFolder ?? "")) continue;
         if (this.isIgnored(path)) continue;
         if (this.isExcluded(path)) continue;
         if (remoteFolders.has(path)) {
@@ -984,7 +984,7 @@ export class SyncEngine {
       for (const f of listing.files) out.push(f);
       for (const sub of listing.folders) {
         // Don't descend into system folders (config dir / .trash).
-        if (isSystemPath(sub, this.vault.configDir)) continue;
+        if (isSystemPath(sub, this.vault.configDir, this.active?.localFolder ?? "")) continue;
         queue.push(sub);
       }
     }
@@ -1190,7 +1190,7 @@ export class SyncEngine {
         // Exclude a stub that lands in a system/ignored/excluded path (defensive;
         // the file path was already checked, but the stub name differs).
         if (
-          isSystemPath(stubRel, this.vault.configDir) ||
+          isSystemPath(stubRel, this.vault.configDir, this.active?.localFolder ?? "") ||
           this.isIgnored(stubRel) ||
           this.isExcluded(stubRel)
         ) {
@@ -1331,7 +1331,7 @@ export class SyncEngine {
 
   /** Is the vault path in the configured sync folder (and not in a system folder)? */
   private inScope(vaultPath: string): boolean {
-    if (isSystemPath(vaultPath, this.vault.configDir)) return false;
+    if (isSystemPath(vaultPath, this.vault.configDir, this.active?.localFolder ?? "")) return false;
     const prefix = this.folderPrefix();
     if (!prefix) return true; // whole vault
     return vaultPath === prefix.slice(0, -1) || vaultPath.startsWith(prefix);
@@ -1490,20 +1490,30 @@ function isGoogleAppsFile(mimeType: string): boolean {
  * root-level dot-entries are excluded; a dot-named file inside a normal folder
  * (e.g. `Notes/.keep`) is still eligible.
  */
-export function isSystemPath(vaultPath: string, configDir: string): boolean {
+export function isSystemPath(vaultPath: string, configDir: string, activeLocalFolder = ""): boolean {
   const p = vaultPath.startsWith("/") ? vaultPath.slice(1) : vaultPath;
-  // Strip any leading "./" and trailing "/" from the configured folder.
   const cfg = configDir.replace(/^\.\//, "").replace(/\/+$/, "");
-  // Root-level dot-entry: the FIRST path segment starts with ".".
+  const local = activeLocalFolder.replace(/^\.\//, "").replace(/\/+$/, "");
+
+  // ALWAYS protect the sync plugin's own internals across all targets to prevent
+  // cyclic sync issues or device-specific config leaks.
+  if (p === `${cfg}/plugins/google-drive-mirror` || p.startsWith(`${cfg}/plugins/google-drive-mirror/`)) return true;
+  if (p === "config-sync-state.json" || p === "config-sync-log.json") return true;
+  if (p.match(/(^|\/)sync-state-.*\.json$/)) return true;
+  if (p === ".trash" || p.startsWith(".trash/")) return true;
+  if (p.split("/").pop() === ".DS_Store") return true;
+
+  // If the user explicitly targeted the config dir (or a subfolder of it, or another dot-folder), allow it!
+  if (local !== "" && (p === local || p.startsWith(`${local}/`))) {
+    return false;
+  }
+
+  // Otherwise, default safety behavior: ignore all root dot-folders (including .obsidian)
   const firstSegment = p.split("/")[0];
   if (firstSegment.startsWith(".")) return true;
-  return (
-    p === cfg ||
-    p.startsWith(`${cfg}/`) ||
-    p === ".trash" ||
-    p.startsWith(".trash/") ||
-    p.split("/").pop() === ".DS_Store"
-  );
+
+  // Also ignore the config dir wherever it is
+  return p === cfg || p.startsWith(`${cfg}/`);
 }
 
 function errMsg(e: unknown): string {

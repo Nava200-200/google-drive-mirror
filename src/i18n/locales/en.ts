@@ -306,11 +306,11 @@ export const en = {
   tabAccount: "Account",
   tabTargets: "Sync targets",
   tabAutoSync: "Auto-sync",
-  tabConfigSync: "Plugin settings",
+  tabConfigSync: "This plugin's sync",
   tabActions: "Actions & log",
 
   // ---- Config sync (config-sync.ts / main.ts / settings-tab.ts) ----
-  configSyncHeading: "Sync plugin settings",
+  configSyncHeading: "This plugin's sync",
   configSyncEnabledName: "Sync this plugin's settings",
   configSyncEnabledDesc:
     "Keep this plugin's own settings (sync targets, filters, options) in sync across your devices. Credentials are encrypted with a passphrase that never leaves this device.",

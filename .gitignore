@@ -27,3 +27,7 @@ npm-debug.log*
 .env
 .env.*
 data.json
+
+sync-state-*.json
+config-sync-*.json
+sync-log.json
